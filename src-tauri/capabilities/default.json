@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Izin dasar untuk jendela utama. Dialog file dipanggil dari sisi Rust. allow-destroy dipakai supaya isian yang belum tersimpan sempat disimpan saat jendela ditutup.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-destroy"
+  ]
+}

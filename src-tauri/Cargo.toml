@@ -1,0 +1,32 @@
+[package]
+name = "e-raport"
+version = "0.1.0"
+description = "E-Raport National Plus Class"
+edition = "2021"
+default-run = "e-raport"
+
+[lib]
+name = "e_raport_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+calamine = "0.38"
+minijinja = { version = "3", features = ["serde"] }
+jiff = "0.2"
+rust_xlsxwriter = "0.102"
+base64 = "0.22"
+argon2 = "0.5"
+password-hash = { version = "0.5", features = ["getrandom"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

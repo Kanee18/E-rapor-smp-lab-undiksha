@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Student Progress Report</title>
+<style>
+  /* Desain mengikuti template "Example of Grading Report National Plus Class".
+     Ukuran kertas diatur dari Pengaturan (A4 / F4 / Letter). */
+  /* Margin halaman 0 supaya browser tidak menambahkan header/footer otomatis
+     (tanggal & judul). Jarak tepi diganti padding .report, yang diulang di
+     setiap halaman lanjutan (box-decoration-break: clone). */
+  @page { size: {{ page.size_css }}; margin: 0; }
+  :root {
+    --navy: #1A365D; --blue: #2A6BAF; --text: #383838; --muted: #708095;
+    --line: #E2E8EF; --line-strong: #CAD4DF; --soft: #F6F9FB; --strong: #1F2A37;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: Arial, Helvetica, sans-serif; font-size: 9.5pt; line-height: 1.38;
+    color: var(--text); -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .report { break-after: page; padding: 12mm 13mm; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  .report:last-child { break-after: auto; }
+  @media screen {
+    body { background: #EEF0F3; padding: 18px 0; }
+    .report {
+      background: #fff; width: {{ page.width_mm }}mm; min-height: {{ page.height_mm }}mm;
+      margin: 0 auto 18px; box-shadow: 0 1px 2px rgba(37,33,26,.12), 0 8px 24px rgba(37,33,26,.10);
+    }
+  }
+  .logo { display: block; margin: 0 auto 6px; height: 18mm; max-width: 60mm; object-fit: contain; }
+  .school { text-align: center; font-size: 8.5pt; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+  .title { margin: 0; text-align: center; color: var(--navy); font-family: "Arial Black", Arial, sans-serif; font-weight: 900; font-size: 19pt; line-height: 1.16; letter-spacing: .01em; }
+  .subtitle { text-align: center; color: var(--navy); font-weight: bold; font-size: 11.5pt; letter-spacing: .03em; margin: 9px 0 12px; }
+  .info { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 28px; background: var(--soft); border: 1px solid var(--line); padding: 8px 12px; }
+  .info b { color: var(--strong); }
+  h2 { color: var(--blue); font-size: 11.5pt; text-transform: uppercase; letter-spacing: .01em; margin: 15px 0 6px; break-after: avoid; }
+  table.grid { width: 100%; border-collapse: collapse; }
+  table.grid thead { display: table-header-group; }
+  table.grid th { background: var(--blue); color: #fff; font-weight: bold; text-align: center; padding: 5px 8px; border: 1px solid var(--blue); }
+  table.grid td { padding: 5px 8px; border: 1px solid var(--line); vertical-align: top; white-space: pre-line; }
+  table.grid tbody tr:nth-child(even) td { background: var(--soft); }
+  table.grid tr { break-inside: avoid; }
+  td.label { width: 25%; font-weight: bold; color: var(--strong); }
+  th.mark, td.mark { width: 12%; text-align: center; }
+  td.mark { font-weight: bold; color: var(--strong); }
+  .note { margin-top: 4px; font-size: 7.8pt; font-style: italic; color: var(--muted); }
+  .uoi { break-inside: avoid; margin-bottom: 10px; }
+  .uoi + .uoi { border-top: 1px dashed var(--line-strong); padding-top: 8px; }
+  .uoi .pname { font-weight: bold; color: var(--navy); margin-bottom: 3px; }
+  table.kv { width: 100%; border-collapse: collapse; }
+  table.kv td { padding: 2px 0; vertical-align: top; }
+  table.kv td.k { width: 29%; font-weight: bold; color: var(--strong); }
+  table.kv ol { margin: 0; padding-left: 17px; }
+  .narrative { margin-top: 6px; background: var(--soft); border: 1px solid var(--line); padding: 7px 10px; white-space: pre-line; }
+  .narrative .k { font-weight: bold; color: var(--strong); white-space: normal; }
+  .empty { color: var(--muted); font-style: italic; }
+  .keep { break-inside: avoid; }
+  .legend { margin-top: 6px; padding: 6px 10px; border: 1px solid var(--line); font-size: 8pt; color: var(--muted); }
+  .legend b { color: var(--strong); }
+  .signs { margin-top: 22px; break-inside: avoid; }
+  .place { text-align: right; padding-right: 5%; margin-bottom: 2px; }
+  .signs .row { display: flex; justify-content: space-between; }
+  .sig { flex: 0 0 36%; text-align: center; }
+  .sig .space { height: 62px; position: relative; }
+  /* tanda tangan digital sedikit menimpa garis nama, seperti tanda tangan basah */
+  .sig-img { position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); max-height: 72px; max-width: 95%; }
+  .sig .name { font-weight: bold; color: var(--strong); border-top: 1px solid var(--text); padding-top: 4px; }
+</style>
+</head>
+<body>
+{% for st in students %}
+<section class="report">
+  {% if logo %}<img class="logo" src="{{ logo }}" alt="">{% endif %}
+  {% if school_name %}<div class="school">{{ school_name }}</div>{% endif %}
+  <h1 class="title">{% for line in title_lines %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</h1>
+  {% if subtitle %}<div class="subtitle">{{ subtitle }}</div>{% endif %}
+
+  <div class="info">
+    <div><b>Student Name:</b> {{ st.name }}</div>
+    <div><b>Grade / Class:</b> {{ st.grade_class }}</div>
+    <div><b>Student ID:</b> {{ st.student_id or "—" }}</div>
+    <div><b>Homeroom Teacher:</b> {{ st.homeroom or "—" }}</div>
+    <div><b>Academic Year:</b> {{ academic_year }}</div>
+    <div><b>Attendance:</b> {{ st.attendance or "—" }}</div>
+  </div>
+
+  <h2>1. Approaches to Learning (ATL) &amp; Learner Profile</h2>
+  <table class="grid">
+    <thead><tr><th>Attribute / Skill Category</th><th>Indicator / Behavior Descriptor</th><th class="mark">Rating</th></tr></thead>
+    <tbody>
+    {% for r in st.atl %}
+      <tr><td class="label">{{ r.name }}</td><td>{{ r.indicator }}</td><td class="mark">{{ r.mark }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="note">*Scale Descriptor: {{ scale_descriptor }}</div>
+
+  <h2>2. Transdisciplinary Unit of Inquiry (UOI)</h2>
+  {% for p in st.projects %}
+  <div class="uoi">
+    {% if st.projects|length > 1 %}<div class="pname">{{ p.name }}</div>{% endif %}
+    <table class="kv">
+      <tr><td class="k">Transdisciplinary Theme:</td><td>{{ p.theme or "—" }}</td></tr>
+      <tr><td class="k">Central Idea:</td><td>{{ p.central_idea or "—" }}</td></tr>
+      <tr><td class="k">Lines of Inquiry:</td><td>{% if p.lines %}<ol>{% for l in p.lines %}<li>{{ l }}</li>{% endfor %}</ol>{% else %}—{% endif %}</td></tr>
+      <tr><td class="k">Understanding Level:</td><td><b>{{ p.understanding }}</b></td></tr>
+      <tr><td class="k">Inquiry &amp; Research Skills:</td><td><b>{{ p.inquiry }}</b></td></tr>
+    </table>
+    <div class="narrative"><div class="k">Teacher Narrative Feedback:</div>{{ p.narrative or "—" }}</div>
+  </div>
+  {% else %}
+  <p class="empty">No unit of inquiry has been recorded yet.</p>
+  {% endfor %}
+
+  <div class="keep">
+    <h2>3. Core Subject Progress &amp; Evaluation</h2>
+    <table class="grid">
+      <thead><tr><th>Learning Domain / Subject Strand</th><th>Developmental Status &amp; Criteria Indicators</th><th class="mark">Marks</th></tr></thead>
+      <tbody>
+      {% for r in st.subjects %}
+        <tr><td class="label">{{ r.name }}</td><td>{{ r.indicator }}</td><td class="mark">{{ r.mark }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <div class="legend"><b>Grading scale:</b>
+      {% for b in legend %}<b>{{ b.code }}</b> = {{ b.label }} ({{ b.range }}){% if not loop.last %} &nbsp;|&nbsp; {% endif %}{% endfor %}
+    </div>
+  </div>
+
+  <div class="signs">
+    {% if place_date %}<div class="place">{{ place_date }}</div>{% endif %}
+    <div class="row">
+      <div class="sig"><div class="space">{% if st.homeroom_signature %}<img class="sig-img" src="{{ st.homeroom_signature }}" alt="">{% endif %}</div><div class="name">{{ st.homeroom or "(..............................................)" }}</div><div>{{ homeroom_title }}</div></div>
+      <div class="sig"><div class="space">{% if principal_signature %}<img class="sig-img" src="{{ principal_signature }}" alt="">{% endif %}</div><div class="name">{{ principal_name or "(..............................................)" }}</div><div>{{ principal_title }}</div></div>
+    </div>
+  </div>
+</section>
+{% endfor %}
+</body>
+</html>
