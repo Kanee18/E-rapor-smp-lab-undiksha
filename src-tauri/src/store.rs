@@ -114,6 +114,9 @@ impl Store {
         match serde_json::from_str::<AppData>(&text) {
             Ok(mut data) => {
                 data.version = DATA_VERSION;
+                if data.settings.logo.is_empty() {
+                    data.settings.logo = crate::model::default_school_logo();
+                }
                 let store = Store { dir, data };
                 let warning = store.daily_backup().err().map(|e| format!("Backup harian gagal: {e}"));
                 Ok((store, warning))
@@ -177,7 +180,7 @@ impl Store {
         self.copy_to_backup("data")
     }
 
-    fn copy_to_backup(&self, prefix: &str) -> Result<PathBuf, String> {
+    pub(crate) fn copy_to_backup(&self, prefix: &str) -> Result<PathBuf, String> {
         let dir = self.backup_dir();
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let dest = dir.join(format!("{prefix}-{}.json", timestamp("%Y-%m-%d_%H%M%S")));
@@ -271,6 +274,9 @@ impl Store {
                 s.projects.clear();
                 s.subject_notes.clear();
                 s.attendance.clear();
+                s.attendance_s = None;
+                s.attendance_i = None;
+                s.attendance_a = None;
             }
         } else {
             d.students.clear();

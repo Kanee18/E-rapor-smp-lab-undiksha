@@ -6,11 +6,13 @@
 
 use crate::grading::{validate_grading, validate_score};
 use crate::importer::{
-    apply_scores, apply_students, ensure_class_configs, new_student_id, normalize_class, read_scores,
-    read_students, scan_workbook, ScoreImportReport, SheetScan, StudentImportReport,
+    apply_attendance, apply_scores, apply_students, ensure_class_configs, new_student_id, normalize_class,
+    read_attendance, read_scores, read_students, scan_workbook, AttendanceImportReport, ScoreImportReport, SheetScan,
+    StudentImportReport,
 };
 use crate::model::{
-    canonical_key, class_sort_key, AppData, ProjectEntry, RatingEntry, ScoreEntry, Settings, Student,
+    canonical_key, class_sort_key, format_attendance_sia, AppData, ProjectEntry, RatingEntry, ScoreEntry, Settings,
+    Student,
 };
 use crate::report;
 use crate::security::{Security, SecurityStatus};
@@ -166,6 +168,9 @@ pub fn save_settings(state: State<'_, AppState>, settings: Settings) -> Result<S
     s.classes.retain(|c| !c.name.is_empty());
     s.classes.sort_by_key(|c| class_sort_key(&c.name));
     s.classes.dedup_by(|a, b| a.name == b.name);
+    if s.logo.is_empty() {
+        s.logo = crate::model::default_school_logo();
+    }
 
     let mut store = lock(&state)?;
     store.data.settings = s;
@@ -241,6 +246,47 @@ pub fn delete_student(state: State<'_, AppState>, id: String) -> Result<(), Stri
     store.save()
 }
 
+#[derive(Serialize)]
+pub struct DeleteClassesResult {
+    students_deleted: usize,
+    classes_deleted: usize,
+    /// Lokasi backup otomatis yang dibuat sebelum menghapus (kalau ada).
+    backup: Option<String>,
+}
+
+/// Hapus satu atau beberapa kelas beserta SEMUA siswanya (nilai & isian rapor ikut
+/// terhapus) dan pengaturan kelasnya (wali kelas, tanda tangan).
+/// Sebelum menghapus, data dibackup otomatis ke folder backup lokal.
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_classes(state: State<'_, AppState>, classes: Vec<String>) -> Result<DeleteClassesResult, String> {
+    let targets: HashSet<String> = classes.iter().map(|c| c.trim().to_string()).filter(|c| !c.is_empty()).collect();
+    if targets.is_empty() {
+        return Err("Pilih minimal satu kelas".into());
+    }
+    let mut store = lock(&state)?;
+    let students_before = store.data.students.len();
+    let classes_before = store.data.settings.classes.len();
+    let found = store.data.students.iter().any(|s| targets.contains(&s.class_name))
+        || store.data.settings.classes.iter().any(|c| targets.contains(&c.name));
+    if !found {
+        return Err("Kelas tidak ditemukan (mungkin sudah dihapus)".into());
+    }
+    let backup = if store.data_path().exists() {
+        Some(store.copy_to_backup("sebelum-hapus-kelas")?.display().to_string())
+    } else {
+        None
+    };
+    store.data.students.retain(|s| !targets.contains(&s.class_name));
+    store.data.settings.classes.retain(|c| !targets.contains(&c.name));
+    let result = DeleteClassesResult {
+        students_deleted: students_before - store.data.students.len(),
+        classes_deleted: classes_before - store.data.settings.classes.len(),
+        backup,
+    };
+    store.save()?;
+    Ok(result)
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub fn set_score(
     state: State<'_, AppState>,
@@ -272,6 +318,12 @@ pub fn set_score(
 #[derive(Deserialize)]
 pub struct ReportFields {
     attendance: String,
+    #[serde(default)]
+    attendance_s: Option<u32>,
+    #[serde(default)]
+    attendance_i: Option<u32>,
+    #[serde(default)]
+    attendance_a: Option<u32>,
     atl: BTreeMap<String, RatingEntry>,
     projects: Vec<ProjectEntry>,
     subject_notes: BTreeMap<String, String>,
@@ -282,6 +334,9 @@ pub fn save_report_fields(state: State<'_, AppState>, id: String, fields: Report
     let mut store = lock(&state)?;
     let s = find_student(&mut store.data, &id)?;
     s.attendance = fields.attendance.trim().to_string();
+    s.attendance_s = fields.attendance_s;
+    s.attendance_i = fields.attendance_i;
+    s.attendance_a = fields.attendance_a;
     s.atl = fields
         .atl
         .into_iter()
@@ -310,6 +365,28 @@ pub fn save_report_fields(state: State<'_, AppState>, id: String, fields: Report
     let snapshot = s.clone();
     store.save()?;
     Ok(student_view(&snapshot, &store.data.settings))
+}
+
+/// Ubah total hari efektif semester dan hitung ulang otomatis "% (Present)"
+/// untuk semua siswa yang sudah memiliki data Sakit/Izin/Alpa.
+#[tauri::command(rename_all = "snake_case")]
+pub fn set_effective_days(state: State<'_, AppState>, days: u32) -> Result<usize, String> {
+    if !(1..=366).contains(&days) {
+        return Err("Hari efektif harus antara 1 dan 366 hari".into());
+    }
+    let mut store = lock(&state)?;
+    store.data.settings.effective_days = days;
+    let mut updated = 0;
+    for s in &mut store.data.students {
+        if let Some(calc) = format_attendance_sia(s.attendance_s, s.attendance_i, s.attendance_a, days) {
+            if s.attendance != calc {
+                s.attendance = calc;
+                updated += 1;
+            }
+        }
+    }
+    store.save()?;
+    Ok(updated)
 }
 
 /// Tambahkan satu proyek ke semua siswa di kelas (yang belum punya proyek itu).
@@ -377,6 +454,25 @@ pub async fn import_scores(
     let sheet_data = read_scores(&PathBuf::from(path), &sheet)?;
     let mut store = lock(&state)?;
     let report = apply_scores(&mut store.data, sheet_data, &classes);
+    store.save()?;
+    Ok(report)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn import_attendance(
+    state: State<'_, AppState>,
+    path: String,
+    sheet: String,
+    classes: Vec<String>,
+    effective_days: u32,
+    empty_as_zero: bool,
+) -> Result<AttendanceImportReport, String> {
+    if !(1..=366).contains(&effective_days) {
+        return Err("Hari efektif harus antara 1 dan 366 hari".into());
+    }
+    let sheet_data = read_attendance(&PathBuf::from(path), &sheet)?;
+    let mut store = lock(&state)?;
+    let report = apply_attendance(&mut store.data, sheet_data, &classes, effective_days, empty_as_zero);
     store.save()?;
     Ok(report)
 }
@@ -452,7 +548,13 @@ pub async fn save_form(
     request: crate::forms::FormRequest,
 ) -> Result<Option<FormSaved>, String> {
     let (data, dir) = {
-        let store = lock(&state)?;
+        let mut store = lock(&state)?;
+        if let Some(d) = request.effective_days.filter(|&d| (1..=366).contains(&d)) {
+            if store.data.settings.effective_days != d {
+                store.data.settings.effective_days = d;
+                let _ = store.save();
+            }
+        }
         (store.data.clone(), store.dir.join("form"))
     };
     // Cek dulu supaya kesalahan muncul sebelum dialog dibuka.
@@ -712,15 +814,15 @@ pub async fn pick_image_file(app: AppHandle, state: State<'_, AppState>, title: 
     }
 }
 
-/// Baca gambar logo menjadi data URL untuk disimpan di pengaturan (maks. 500 KB).
+/// Baca gambar logo menjadi data URL untuk disimpan di pengaturan (maks. 10 MB; diperkecil di tampilan).
 #[tauri::command(rename_all = "snake_case")]
 pub fn load_logo(state: State<'_, AppState>, path: String) -> Result<String, String> {
     ensure_unlocked(&state)?;
     let bytes = std::fs::read(&path).map_err(|e| format!("Gambar tidak bisa dibaca: {e}"))?;
-    if bytes.len() > 500 * 1024 {
+    if bytes.len() > 10 * 1024 * 1024 {
         return Err(format!(
-            "Gambar terlalu besar ({} KB). Pakai logo di bawah 500 KB, misalnya PNG lebar ±400 piksel.",
-            bytes.len() / 1024
+            "Gambar terlalu besar ({} MB). Pakai gambar di bawah 10 MB.",
+            bytes.len() / (1024 * 1024)
         ));
     }
     image_data_url(&bytes)

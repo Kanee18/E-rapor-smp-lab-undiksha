@@ -48,10 +48,10 @@ export function appendSentence(narrative, sentence) {
 }
 
 /**
- * Modal pemilih kalimat. `predicate`: kode Understanding Level siswa (untuk urutan saran).
- * `onPick(kalimat)` dipanggil setiap kalimat diklik; modal tetap terbuka.
+ * Daftar kalimat narasi yang bisa diklik untuk ditambahkan.
+ * `predicate`: kode Understanding Level siswa (untuk urutan saran).
  */
-export function openPhraseBank({ settings, student, theme, predicate, getText, onPick }) {
+export function phraseBankList({ settings, student, theme, predicate, getText, onPick }) {
   const bank = settings.narrative_bank || [];
   const cats = PHRASE_CATEGORIES(settings.grading.bands);
   const order = [predicate, 'next', 'general', ...cats.map((c) => c.value)].filter((v, i, a) => v && a.indexOf(v) === i);
@@ -61,7 +61,7 @@ export function openPhraseBank({ settings, student, theme, predicate, getText, o
   const other = bank.filter((p) => !order.includes(p.category));
   if (other.length) groups.push({ value: 'other', label: 'Lainnya', items: other });
 
-  const body = h('div', { class: 'stack' },
+  return h('div', { class: 'stack' },
     h('p', { class: 'muted small' },
       predicate ? `Understanding Level ${predicate}: kalimat yang cocok ditampilkan paling atas. ` : 'Isi Understanding Level dulu supaya saran kalimat lebih tepat. ',
       'Klik untuk menambahkan ke akhir narasi; kalimat tetap bisa diedit setelahnya.'),
@@ -82,11 +82,17 @@ export function openPhraseBank({ settings, student, theme, predicate, getText, o
           return row;
         })))
       : h('p', { class: 'muted' }, 'Bank kalimat kosong. Tambahkan kalimat di Pengaturan → Bank kalimat.'));
+}
 
+/**
+ * Modal pemilih kalimat. `predicate`: kode Understanding Level siswa (untuk urutan saran).
+ * `onPick(kalimat)` dipanggil setiap kalimat diklik; modal tetap terbuka.
+ */
+export function openPhraseBank(opts) {
   openModal({
-    title: `Bank kalimat — ${displayName(student.name)}`,
+    title: `Bank kalimat — ${displayName(opts.student.name)}`,
     wide: true,
-    body,
+    body: phraseBankList(opts),
     actions: [{ label: 'Selesai', kind: 'primary', onClick: (c) => c() }],
   });
 }

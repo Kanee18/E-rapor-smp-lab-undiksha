@@ -51,6 +51,12 @@ pub struct DataMeta {
 pub struct Settings {
     /// Logo sekolah sebagai data URL ("data:image/png;base64,..."). Kosong = tanpa logo.
     pub logo: String,
+    /// Posisi logo sekolah di kepala rapor: "left" (default), "right", atau "top".
+    pub logo_position: String,
+    /// Logo universitas/kampus sebagai data URL ("data:image/png;base64,..."). Kosong = tanpa logo.
+    pub university_logo: String,
+    /// Posisi logo universitas/kampus di kepala rapor: "right" (default), "left", atau "top".
+    pub university_logo_position: String,
     /// Baris kecil di atas judul rapor.
     pub school_name: String,
     /// Judul besar rapor; boleh lebih dari satu baris (pisahkan dengan Enter).
@@ -71,6 +77,8 @@ pub struct Settings {
     pub paper_size: String,
     /// Tampilkan angka di samping predikat (mis. "ME (92)"). Default: tidak.
     pub show_numeric_score: bool,
+    /// Total hari efektif sekolah dalam satu semester (untuk menghitung % kehadiran dari S/I/A).
+    pub effective_days: u32,
     pub grading: GradingConfig,
     /// Baris-baris bagian 3 (Core Subject). Bisa ditambah/dihapus.
     pub subjects: Vec<SubjectConfig>,
@@ -128,7 +136,10 @@ fn default_narrative_bank() -> Vec<Phrase> {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            logo: String::new(),
+            logo: default_school_logo(),
+            logo_position: "left".into(),
+            university_logo: String::new(),
+            university_logo_position: "right".into(),
             school_name: "SMP Laboratorium Undiksha Singaraja".into(),
             report_title: "NATIONAL PLUS CLASS\nIB ENRICHMENT PROGRAM".into(),
             report_subtitle: "STUDENT PROGRESS REPORT — TERM 1".into(),
@@ -141,6 +152,7 @@ impl Default for Settings {
             principal_signature: String::new(),
             paper_size: "A4".into(),
             show_numeric_score: false,
+            effective_days: 100,
             grading: GradingConfig::default(),
             subjects: default_subjects(),
             atl: default_atl(),
@@ -272,6 +284,10 @@ pub struct Student {
     pub class_name: String,
     /// Bebas, mis. "98%" atau "98% (Present)".
     pub attendance: String,
+    /// Jumlah hari Sakit (S), Izin (I), dan Alpa (A) (opsional, untuk hitung % otomatis).
+    pub attendance_s: Option<u32>,
+    pub attendance_i: Option<u32>,
+    pub attendance_a: Option<u32>,
     /// Nilai per kolom sumber; kunci = `canonical_key(judul kolom)`.
     pub scores: BTreeMap<String, ScoreEntry>,
     /// Indikator khusus siswa ini per mapel (id mapel → teks). Kosong = pakai bawaan.
@@ -428,6 +444,41 @@ pub fn grade_class_label(class_name: &str) -> String {
         Some(g) => format!("Grade {g} ({class_name})"),
         None => class_name.to_string(),
     }
+}
+
+/// Logo bawaan sekolah (Sekolah Lab Undiksha) sebagai data URL PNG.
+pub fn default_school_logo() -> String {
+    use base64::Engine;
+    const BYTES: &[u8] = include_bytes!("../../ui/logo-sekolah.png");
+    format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(BYTES))
+}
+
+impl Settings {
+    /// Hari efektif yang sah (minimal 1, default 100 kalau file lama bernilai 0).
+    pub fn effective_days(&self) -> u32 {
+        if self.effective_days == 0 { 100 } else { self.effective_days }
+    }
+}
+
+/// Hitung teks kehadiran "98% (Present)" dari jumlah hadir dan total hari efektif.
+pub fn format_attendance_ratio(present: f64, total: f64) -> Option<String> {
+    if !present.is_finite() || !total.is_finite() || total <= 0.0 {
+        return None;
+    }
+    let pct = crate::grading::round_half_up((present.max(0.0) / total) * 100.0).clamp(0.0, 100.0) as u32;
+    Some(format!("{pct}% (Present)"))
+}
+
+/// Hitung teks kehadiran "98% (Present)" dari jumlah hari Sakit (S), Izin (I), Alpa (A)
+/// dan total hari efektif (`effective_days`). `None` kalau S/I/A semuanya belum diisi.
+pub fn format_attendance_sia(s: Option<u32>, i: Option<u32>, a: Option<u32>, effective_days: u32) -> Option<String> {
+    if s.is_none() && i.is_none() && a.is_none() {
+        return None;
+    }
+    let total = if effective_days == 0 { 100 } else { effective_days };
+    let absent = s.unwrap_or(0).saturating_add(i.unwrap_or(0)).saturating_add(a.unwrap_or(0));
+    let present = total.saturating_sub(absent);
+    format_attendance_ratio(present as f64, total as f64)
 }
 
 #[cfg(test)]

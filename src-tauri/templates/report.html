@@ -27,12 +27,16 @@
     .report {
       background: #fff; width: {{ page.width_mm }}mm; min-height: {{ page.height_mm }}mm;
       margin: 0 auto 18px; box-shadow: 0 1px 2px rgba(37,33,26,.12), 0 8px 24px rgba(37,33,26,.10);
+      content-visibility: auto; contain-intrinsic-size: {{ page.width_mm }}mm {{ page.height_mm }}mm;
     }
   }
-  .logo { display: block; margin: 0 auto 6px; height: 18mm; max-width: 60mm; object-fit: contain; }
-  .school { text-align: center; font-size: 8.5pt; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
-  .title { margin: 0; text-align: center; color: var(--navy); font-family: "Arial Black", Arial, sans-serif; font-weight: 900; font-size: 19pt; line-height: 1.16; letter-spacing: .01em; }
-  .subtitle { text-align: center; color: var(--navy); font-weight: bold; font-size: 11.5pt; letter-spacing: .03em; margin: 9px 0 12px; }
+  .top-logos { display: flex; justify-content: center; align-items: center; gap: 4mm; margin-bottom: 5px; }
+  .header { display: grid; grid-template-columns: 22mm 1fr 22mm; align-items: center; gap: 3mm; margin-bottom: 10px; }
+  .logo-slot { display: flex; align-items: center; justify-content: center; gap: 2mm; min-height: 20mm; }
+  .logo { display: block; width: 20mm; height: 20mm; object-fit: contain; }
+  .school { text-align: center; font-size: 8.5pt; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .title { margin: 0; text-align: center; color: var(--navy); font-family: "Arial Black", Arial, sans-serif; font-weight: 900; font-size: 18pt; line-height: 1.16; letter-spacing: .01em; }
+  .subtitle { text-align: center; color: var(--navy); font-weight: bold; font-size: 11.5pt; letter-spacing: .03em; margin: 7px 0 0; }
   .info { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 28px; background: var(--soft); border: 1px solid var(--line); padding: 8px 12px; }
   .info b { color: var(--strong); }
   h2 { color: var(--blue); font-size: 11.5pt; text-transform: uppercase; letter-spacing: .01em; margin: 15px 0 6px; break-after: avoid; }
@@ -72,10 +76,16 @@
 <body>
 {% for st in students %}
 <section class="report">
-  {% if logo %}<img class="logo" src="{{ logo }}" alt="">{% endif %}
-  {% if school_name %}<div class="school">{{ school_name }}</div>{% endif %}
-  <h1 class="title">{% for line in title_lines %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</h1>
-  {% if subtitle %}<div class="subtitle">{{ subtitle }}</div>{% endif %}
+  {% if top_logos %}<div class="top-logos">{% for img in top_logos %}<img class="logo" decoding="async" src="{{ img }}" alt="">{% endfor %}</div>{% endif %}
+  <div class="header">
+    <div class="logo-slot">{% for img in left_logos %}<img class="logo" decoding="async" src="{{ img }}" alt="">{% endfor %}</div>
+    <div class="header-text">
+      {% if school_name %}<div class="school">{{ school_name }}</div>{% endif %}
+      <h1 class="title">{% for line in title_lines %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</h1>
+      {% if subtitle %}<div class="subtitle">{{ subtitle }}</div>{% endif %}
+    </div>
+    <div class="logo-slot">{% for img in right_logos %}<img class="logo" decoding="async" src="{{ img }}" alt="">{% endfor %}</div>
+  </div>
 
   <div class="info">
     <div><b>Student Name:</b> {{ st.name }}</div>
@@ -132,8 +142,8 @@
   <div class="signs">
     {% if place_date %}<div class="place">{{ place_date }}</div>{% endif %}
     <div class="row">
-      <div class="sig"><div class="space">{% if st.homeroom_signature %}<img class="sig-img" src="{{ st.homeroom_signature }}" alt="">{% endif %}</div><div class="name">{{ st.homeroom or "(..............................................)" }}</div><div>{{ homeroom_title }}</div></div>
-      <div class="sig"><div class="space">{% if principal_signature %}<img class="sig-img" src="{{ principal_signature }}" alt="">{% endif %}</div><div class="name">{{ principal_name or "(..............................................)" }}</div><div>{{ principal_title }}</div></div>
+      <div class="sig"><div class="space">{% if st.homeroom_signature %}<img class="sig-img" decoding="async" src="{{ st.homeroom_signature }}" alt="">{% endif %}</div><div class="name">{{ st.homeroom or "(..............................................)" }}</div><div>{{ homeroom_title }}</div></div>
+      <div class="sig"><div class="space">{% if principal_signature %}<img class="sig-img" decoding="async" src="{{ principal_signature }}" alt="">{% endif %}</div><div class="name">{{ principal_name or "(..............................................)" }}</div><div>{{ principal_title }}</div></div>
     </div>
   </div>
 </section>

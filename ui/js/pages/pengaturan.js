@@ -137,23 +137,113 @@ export async function render(ctx) {
     const updateSum = () => { sum.textContent = `Total bobot ${d.grading.weight_ph + d.grading.weight_pts}%, dihitung sebagai rata-rata berbobot.`; };
     updateSum();
 
+    const saveLogoSettings = async (patch, msg) => {
+      Object.assign(d, patch);
+      try {
+        await api.saveSettings(d);
+        await app.reload();
+        draft = structuredClone(app.data.settings);
+        setDirty(false);
+        toast(msg, 'ok');
+        draw();
+      } catch (e) {
+        markDirty();
+        draw();
+        toast(errorText(e), 'error');
+      }
+    };
+
+    const normPos = (p, def) => (['left', 'right', 'top'].includes(p) ? p : def);
+    const setLogoPos = (posKey, otherPosKey, otherDef, newPos, label) => {
+      const curOther = normPos(d[otherPosKey], otherDef);
+      const patch = { [posKey]: newPos };
+      // Kalau pindah ke Kiri/Kanan yang sedang ditempati logo satunya, tukar otomatis supaya tidak menumpuk.
+      if ((newPos === 'left' || newPos === 'right') && curOther === newPos) {
+        patch[otherPosKey] = newPos === 'left' ? 'right' : 'left';
+      }
+      const posName = { left: 'sebelah kiri judul', right: 'sebelah kanan judul', top: 'di atas judul' }[newPos];
+      saveLogoSettings(patch, `Posisi ${label.toLowerCase()} dipindah ke ${posName}`);
+    };
+
+    const POS_LABELS = [['left', 'Kiri'], ['right', 'Kanan'], ['top', 'Atas']];
+
+    const logoPicker = (label, key, posKey, defPos, otherPosKey, otherDef) => {
+      const hasLogo = typeof d[key] === 'string' && d[key].startsWith('data:image/');
+      const curPos = normPos(d[posKey], defPos);
+      const posName = { left: 'Sebelah kiri judul', right: 'Sebelah kanan judul', top: 'Di atas judul' }[curPos];
+      return h('div', { class: 'logo-box' },
+        h('div', { class: 'preview' }, hasLogo ? h('img', { src: d[key], alt: label }) : 'Belum ada logo'),
+        h('div', { class: 'stack', style: { gap: '7px' } },
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } },
+            h('b', { style: { fontSize: '13.5px' } }, label),
+            h('span', { class: 'small muted' }, `· ${posName}`)),
+          h('div', { class: 'row', style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } },
+            h('span', { class: 'small muted' }, 'Posisi:'),
+            h('div', { class: 'segs' }, POS_LABELS.map(([val, textLbl]) =>
+              h('button', {
+                type: 'button',
+                class: `seg wide${curPos === val ? ' on' : ''}`,
+                style: { height: '26px', padding: '0 10px', fontSize: '12px' },
+                onclick: () => { if (curPos !== val) setLogoPos(posKey, otherPosKey, otherDef, val, label); },
+              }, textLbl)))),
+          h('div', { class: 'row', style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } },
+            button(hasLogo ? 'Ganti logo…' : 'Pilih logo…', { kind: 'sm', onClick: async () => {
+              try {
+                const path = await api.pickImageFile(`Pilih ${label.toLowerCase()}`);
+                if (!path) return;
+                const rawUrl = await api.loadLogo(path);
+                const resized = await shrinkLogo(rawUrl, 220);
+                await saveLogoSettings({ [key]: resized }, `${label} disimpan`);
+              } catch (e) { toast(errorText(e), 'error'); }
+            } }),
+            hasLogo ? button('Hapus', { kind: 'sm quiet', onClick: () => saveLogoSettings({ [key]: 'none' }, `${label} dihapus`) }) : null,
+            !hasLogo && key === 'logo'
+              ? button('Pakai logo bawaan', { kind: 'sm quiet', onClick: () => saveLogoSettings({ logo: '' }, 'Logo sekolah bawaan dipasang') })
+              : null)));
+    };
+
+    const schoolPos = normPos(d.logo_position, 'left');
+    const univPos = normPos(d.university_logo_position, 'right');
+    const hasImg = (v) => typeof v === 'string' && v.startsWith('data:image/');
+    const logosAt = (pos) => [
+      schoolPos === pos && hasImg(d.logo) ? { src: d.logo, alt: 'Logo sekolah' } : null,
+      univPos === pos && hasImg(d.university_logo) ? { src: d.university_logo, alt: 'Logo kampus' } : null,
+    ].filter(Boolean);
+
+    const headerPreview = h('div', { class: 'header-preview' },
+      h('div', { class: 'hp-top-bar' },
+        h('span', { class: 'small muted' }, 'Pratinjau posisi logo di kepala rapor:'),
+        button('⇄ Tukar posisi Kiri ↔ Kanan', { kind: 'sm', onClick: () => {
+          const nextSchool = schoolPos === 'left' ? 'right' : schoolPos === 'right' ? 'left' : 'right';
+          const nextUniv = univPos === 'right' ? 'left' : univPos === 'left' ? 'right' : 'left';
+          saveLogoSettings(
+            { logo_position: nextSchool, university_logo_position: nextUniv },
+            'Posisi logo sekolah & kampus ditukar',
+          );
+        } })),
+      logosAt('top').length
+        ? h('div', { class: 'hp-top-logos' }, logosAt('top').map((l) => h('img', { src: l.src, alt: l.alt })))
+        : null,
+      h('div', { class: 'hp-grid' },
+        h('div', { class: 'hp-slot' },
+          logosAt('left').length
+            ? logosAt('left').map((l) => h('img', { src: l.src, alt: l.alt }))
+            : h('span', { class: 'hp-empty' }, 'Kiri kosong')),
+        h('div', { class: 'hp-text' },
+          h('div', { class: 'hp-school' }, d.school_name || 'NAMA SEKOLAH'),
+          h('div', { class: 'hp-title' }, (d.report_title || 'JUDUL RAPOR').split('\n').filter(Boolean).map((line, i) => [i > 0 ? h('br') : null, line])),
+          h('div', { class: 'hp-sub' }, d.report_subtitle || '')),
+        h('div', { class: 'hp-slot' },
+          logosAt('right').length
+            ? logosAt('right').map((l) => h('img', { src: l.src, alt: l.alt }))
+            : h('span', { class: 'hp-empty' }, 'Kanan kosong'))));
+
     const body = [
-      set('identitas', 'Identitas rapor', 'Logo dan teks di kepala rapor, serta bagian tanda tangan.',
-        h('div', { class: 'logo-box', style: { marginBottom: '18px' } },
-          h('div', { class: 'preview' }, d.logo ? h('img', { src: d.logo, alt: 'Logo sekolah' }) : 'Belum ada logo'),
-          h('div', { class: 'stack', style: { gap: '6px' } },
-            h('div', { class: 'row' },
-              button(d.logo ? 'Ganti logo…' : 'Pilih logo…', { onClick: async () => {
-                try {
-                  const path = await api.pickImageFile();
-                  if (!path) return;
-                  d.logo = await api.loadLogo(path);
-                  markDirty();
-                  draw();
-                } catch (e) { toast(errorText(e), 'error'); }
-              } }),
-              d.logo ? button('Hapus logo', { kind: 'quiet', onClick: () => { d.logo = ''; markDirty(); draw(); } }) : null),
-            h('span', { class: 'hint' }, 'PNG atau JPG di bawah 500 KB, tampil di atas nama sekolah. PNG berlatar transparan paling rapi.'))),
+      set('identitas', 'Identitas rapor', 'Atur gambar dan posisi logo sekolah maupun logo universitas/kampus (kiri, kanan, atau atas), teks kepala rapor, serta tanda tangan.',
+        h('div', { class: 'grid-2', style: { marginBottom: '14px' } },
+          logoPicker('Logo sekolah', 'logo', 'logo_position', 'left', 'university_logo_position', 'right'),
+          logoPicker('Logo universitas / kampus', 'university_logo', 'university_logo_position', 'right', 'logo_position', 'left')),
+        headerPreview,
         h('div', { class: 'grid-2' },
           text('Nama sekolah', d, 'school_name', { hint: 'Baris kecil di atas judul.' }),
           text('Judul rapor', d, 'report_title', { multiline: true, hint: 'Enter untuk baris baru.' }),
@@ -260,6 +350,31 @@ export async function render(ctx) {
   }
 
   draw();
+}
+
+export function shrinkLogo(dataUrl, maxPx = 220) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      if (img.width <= maxPx && img.height <= maxPx && dataUrl.length < 25_000) {
+        resolve(dataUrl);
+        return;
+      }
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const png = canvas.toDataURL('image/png');
+      const webp = canvas.toDataURL('image/webp', 0.9);
+      resolve(webp.startsWith('data:image/webp') && webp.length < png.length ? webp : png);
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
 }
 
 function templateSection(app, redraw) {

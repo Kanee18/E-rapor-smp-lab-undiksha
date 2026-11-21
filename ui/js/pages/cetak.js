@@ -28,14 +28,15 @@ export async function render(ctx) {
     frame.contentWindow?.print();
   } }));
 
-  const refresh = debounce(async () => {
+  const runRefresh = async () => {
     const ids = views.map((v) => v.student.id).filter((id) => selected.has(id));
     if (!ids.length) {
       frame.srcdoc = '<p style="font:14px IBM Plex Sans,Segoe UI,sans-serif;padding:28px;color:#7B828C">Belum ada siswa yang dipilih.</p>';
       return;
     }
     try { frame.srcdoc = await api.renderReport(ids); } catch (e) { toast(errorText(e), 'error'); }
-  }, 250);
+  };
+  const refresh = debounce(runRefresh, 160);
 
   const countText = h('span', { class: 'small muted tabular' });
   const all = h('input', { type: 'checkbox', checked: true, 'aria-label': 'Pilih semua' });
@@ -79,7 +80,7 @@ export async function render(ctx) {
       frame),
   );
   if (!ctx.entering) swapIn(printLayout);
-  refresh();
+  runRefresh();
 }
 
 /** Leger kelas ke Excel: pilih kelas → simpan. */

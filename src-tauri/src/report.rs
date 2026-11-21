@@ -72,6 +72,10 @@ struct ReportStudent {
 struct Context {
     page: Page,
     logo: String,
+    university_logo: String,
+    left_logos: Vec<String>,
+    right_logos: Vec<String>,
+    top_logos: Vec<String>,
     school_name: String,
     title_lines: Vec<String>,
     subtitle: String,
@@ -107,6 +111,15 @@ fn legend(settings: &Settings) -> Vec<LegendItem> {
 /// (data:image/…); alamat lain diabaikan supaya rapor tidak memuat apa pun dari luar.
 fn signature(st: &Settings, image: &str) -> String {
     if st.digital_signature && image.starts_with("data:image/") { image.to_string() } else { String::new() }
+}
+
+fn normalize_logo_pos<'a>(pos: &str, default: &'a str) -> &'a str {
+    match pos.trim().to_ascii_lowercase().as_str() {
+        "left" | "kiri" => "left",
+        "right" | "kanan" => "right",
+        "top" | "atas" => "top",
+        _ => default,
+    }
 }
 
 fn build_context(data: &AppData, ids: &[String]) -> Context {
@@ -174,10 +187,37 @@ fn build_context(data: &AppData, ids: &[String]) -> Context {
         .map(|b| format!("{} = {}", b.code, b.label))
         .collect::<Vec<_>>()
         .join(" | ");
+    let logo = if st.logo.starts_with("data:image/") { st.logo.clone() } else { String::new() };
+    let university_logo = if st.university_logo.starts_with("data:image/") {
+        st.university_logo.clone()
+    } else {
+        String::new()
+    };
+    let mut left_logos = Vec::new();
+    let mut right_logos = Vec::new();
+    let mut top_logos = Vec::new();
+    for (img, pos) in [
+        (&logo, normalize_logo_pos(&st.logo_position, "left")),
+        (&university_logo, normalize_logo_pos(&st.university_logo_position, "right")),
+    ] {
+        if img.is_empty() {
+            continue;
+        }
+        match pos {
+            "right" => right_logos.push(img.clone()),
+            "top" => top_logos.push(img.clone()),
+            _ => left_logos.push(img.clone()),
+        }
+    }
+
     Context {
         page: page_for(&st.paper_size),
         // hanya gambar yang disematkan; alamat lain diabaikan
-        logo: if st.logo.starts_with("data:image/") { st.logo.clone() } else { String::new() },
+        logo,
+        university_logo,
+        left_logos,
+        right_logos,
+        top_logos,
         school_name: st.school_name.trim().to_string(),
         title_lines: st
             .report_title
@@ -203,7 +243,11 @@ pub fn render(data: &AppData, ids: &[String], custom_template: Option<&str>) -> 
     let mut env = Environment::new();
     // Semua isian di-escape sebagai HTML, termasuk di template kustom.
     env.set_auto_escape_callback(|_| AutoEscape::Html);
-    let source = custom_template.unwrap_or(BUILTIN_TEMPLATE);
+    let source = match custom_template {
+        Some(c) if !c.contains("left_logos") && c.contains("Student Progress Report") => BUILTIN_TEMPLATE,
+        Some(c) => c,
+        None => BUILTIN_TEMPLATE,
+    };
     env.add_template_owned("report.html", source.to_string())
         .map_err(|e| format!("Template rapor bermasalah: {e:#}"))?;
     let tmpl = env.get_template("report.html").map_err(|e| e.to_string())?;
@@ -291,12 +335,25 @@ mod tests {
     #[test]
     fn logo_only_when_embedded_image() {
         let mut d = data_with(Student { id: "1".into(), class_name: "IX-1".into(), ..Default::default() });
+        d.settings.logo = String::new();
         assert!(!render(&d, &["1".into()], None).unwrap().contains("class=\"logo\""));
-        d.settings.logo = "data:image/png;base64,iVBORw0KGgo=".into();
+        d.settings.logo = "data:image/png;base64,SEKOLAH".into();
+        d.settings.university_logo = "data:image/png;base64,KAMPUS".into();
         let html = render(&d, &["1".into()], None).unwrap();
-        assert!(html.contains("class=\"logo\""));
-        assert!(html.contains("data:image"));
+        assert_eq!(html.matches("class=\"logo\"").count(), 2);
+        // default: sekolah di kiri (sebelum judul), kampus di kanan (sesudah judul)
+        assert!(html.find("SEKOLAH").unwrap() < html.find("NATIONAL PLUS CLASS").unwrap());
+        assert!(html.find("NATIONAL PLUS CLASS").unwrap() < html.find("KAMPUS").unwrap());
+
+        // tukar posisi: kampus di kiri, sekolah di kanan
+        d.settings.logo_position = "right".into();
+        d.settings.university_logo_position = "left".into();
+        let swapped = render(&d, &["1".into()], None).unwrap();
+        assert!(swapped.find("KAMPUS").unwrap() < swapped.find("NATIONAL PLUS CLASS").unwrap());
+        assert!(swapped.find("NATIONAL PLUS CLASS").unwrap() < swapped.find("SEKOLAH").unwrap());
+
         d.settings.logo = "https://contoh.invalid/logo.png".into();
+        d.settings.university_logo = "https://contoh.invalid/univ.png".into();
         assert!(!render(&d, &["1".into()], None).unwrap().contains("class=\"logo\""));
     }
 

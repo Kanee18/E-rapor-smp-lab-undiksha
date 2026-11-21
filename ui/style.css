@@ -483,6 +483,55 @@ table.cells tbody tr:hover td.sticky, table.cells tbody tr:hover td.sticky2 { ba
 .project .pair .lbl { font-size: 13px; font-weight: 600; }
 .narr-tools { display: flex; justify-content: space-between; gap: 12px; margin-top: 4px; font-size: 12.5px; }
 
+/* mode tabel di Isi rapor */
+.table-subbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.cell-who { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.cell-who .dot { flex: none; }
+.cell-student-btn {
+  border: 0; background: none; padding: 0; color: var(--text); font: inherit; font-weight: 600;
+  text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cell-student-btn:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.cell-rate { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+table.cells input.rate-in {
+  width: 58px; text-align: center; font-weight: 600; text-transform: uppercase;
+}
+table.cells input.rate-in.has-num { width: 48px; text-align: right; text-transform: none; }
+table.cells input.rate-in.is-code {
+  --c: var(--text-3);
+  background: color-mix(in srgb, var(--c) 11%, white);
+  color: color-mix(in srgb, var(--c) 80%, #000);
+  font-weight: 700;
+}
+table.cells input.rate-in.r0 { --c: var(--ee); }
+table.cells input.rate-in.r1 { --c: var(--me); }
+table.cells input.rate-in.r2 { --c: var(--ae); }
+table.cells input.rate-in.r3, table.cells input.rate-in.r4, table.cells input.rate-in.r5 { --c: var(--be); }
+table.cells input.rate-in:focus { background: var(--panel); color: var(--text); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+table.cells select.cell-select {
+  width: 155px; min-height: 32px; padding: 4px 8px;
+  border: 1px solid transparent; border-radius: 8px; background: transparent;
+  font-size: 13px; color: var(--text); cursor: pointer;
+}
+table.cells select.cell-select.empty { color: var(--text-3); font-style: italic; }
+table.cells select.cell-select:hover { background: var(--hover); }
+table.cells select.cell-select:focus { background: var(--panel); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.cell-proj-wrap { display: inline-flex; align-items: center; gap: 4px; }
+.cell-proj-more { font-size: 11px; font-weight: 600; color: var(--text-3); background: var(--hover); padding: 2px 6px; border-radius: 99px; }
+.cell-narr {
+  display: inline-flex; align-items: center; gap: 6px;
+  width: 185px; min-height: 32px; padding: 4px 9px;
+  border: 1px solid transparent; border-radius: 8px; background: transparent;
+  font-size: 12.5px; color: var(--text-3); text-align: left; cursor: pointer;
+}
+.cell-narr:hover { background: var(--hover); color: var(--text); }
+.cell-narr.filled { color: var(--text-2); }
+.cell-narr .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.cell-narr .ic { color: var(--ee); flex: none; display: inline-flex; }
+.cell-narr .ic svg { width: 14px; height: 14px; stroke-width: 2.2; }
+table.cells input.sia-in { width: 44px; text-align: center; padding: 4px 4px; }
+table.cells input.att-in { width: 122px; text-align: left; }
+
 /* ------------------------------------------------------------------ cetak */
 .print-layout {
   flex: 1 1 auto; min-height: 0;
@@ -529,8 +578,26 @@ table.edit .tight { width: 1%; white-space: nowrap; padding-top: 9px; }
 .save-bar::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
 .save-bar.show { transform: none; opacity: 1; pointer-events: auto; }
 .logo-box { display: flex; align-items: center; gap: 18px; }
-.logo-box .preview { width: 88px; height: 88px; border: 1px dashed var(--line-2); border-radius: 14px; display: grid; place-items: center; background: var(--soft); color: var(--text-3); font-size: 12px; text-align: center; padding: 6px; }
+.logo-box .preview { width: 88px; height: 88px; border: 1px dashed var(--line-2); border-radius: 14px; display: grid; place-items: center; background: var(--soft); color: var(--text-3); font-size: 12px; text-align: center; padding: 6px; flex: none; }
 .logo-box .preview img { max-width: 76px; max-height: 76px; object-fit: contain; }
+.header-preview {
+  margin-bottom: 22px; padding: 14px 18px 16px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--soft);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.hp-top-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.hp-top-logos { display: flex; justify-content: center; gap: 10px; }
+.hp-top-logos img, .hp-slot img { width: 52px; height: 52px; object-fit: contain; }
+.hp-grid {
+  display: grid; grid-template-columns: 72px 1fr 72px; align-items: center; gap: 12px;
+  padding: 12px 16px; border-radius: 10px; background: #fff; border: 1px solid var(--line);
+}
+.hp-slot { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 54px; }
+.hp-empty { font-size: 11px; color: var(--text-3); border: 1px dashed var(--line-2); border-radius: 8px; padding: 8px 6px; text-align: center; width: 100%; }
+.hp-text { text-align: center; font-family: Arial, sans-serif; }
+.hp-school { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: #708095; margin-bottom: 3px; }
+.hp-title { font-weight: 900; font-size: 15px; line-height: 1.18; color: #1A365D; }
+.hp-sub { font-weight: 700; font-size: 11px; color: #1A365D; margin-top: 4px; }
 
 /* ------------------------------------------------------------------ bank kalimat */
 .phrase-group + .phrase-group { margin-top: 10px; }

@@ -6,12 +6,18 @@ import { h, button, errorText, openModal, toast } from './dom.js';
 export function openFormBuilder(app) {
   const s = app.data.settings;
   const classes = app.classes();
+  const initialClasses = app.selectedClass ? [app.selectedClass] : classes.slice(0, 1);
+  const activeProjInClass = app.data.students
+    .find((st) => initialClasses.includes(st.class_name) && st.projects.length)?.projects[0]?.project_id;
   const req = {
-    classes: app.selectedClass ? [app.selectedClass] : classes.slice(0, 1),
+    classes: initialClasses,
     include_atl: true,
-    project_id: s.projects[0]?.id ?? null,
+    project_id: (activeProjInClass && s.projects.some((p) => p.id === activeProjInClass))
+      ? activeProjInClass
+      : (s.projects[0]?.id ?? null),
     only_project_members: false,
-    include_attendance: false,
+    include_attendance: true,
+    effective_days: s.effective_days || 100,
   };
   let withProject = Boolean(req.project_id);
 
@@ -30,8 +36,17 @@ export function openFormBuilder(app) {
   const projectSelect = h('select', { style: { width: 'auto', minWidth: '240px' }, onchange: (e) => { req.project_id = e.target.value; update(); } },
     s.projects.map((p) => h('option', { value: p.id, selected: p.id === req.project_id }, p.theme ? `${p.name} — ${p.theme}` : p.name)));
 
+  const effDaysWrap = h('div', { style: { paddingLeft: '23px', display: 'flex', alignItems: 'center', gap: '8px' } },
+    h('span', { class: 'small muted' }, 'Total hari efektif semester:'),
+    h('input', {
+      type: 'number', min: 1, max: 366, value: req.effective_days,
+      style: { width: '78px', minHeight: '30px', padding: '4px 8px' },
+      oninput: (e) => { req.effective_days = Number(e.target.value) || 100; },
+    }),
+    h('span', { class: 'small muted' }, 'hari (S, I, A di Excel otomatis dihitung jadi "98% (Present)")'));
+
   const body = h('div', { class: 'stack' },
-    h('p', {}, 'Form berisi daftar siswa dengan kolom yang bisa diisi di Excel. Isian yang sudah ada ikut tercantum, jadi form boleh dibuat ulang kapan saja.'),
+    h('p', {}, 'File Excel ini berisi daftar siswa beserta data yang sudah kamu isi. File ini bisa diisi di Microsoft Excel ATAU dikirim ke guru lain untuk dibuka lewat tombol "Impor form" di halaman Isi rapor mereka (data siswa, nilai, dan isian yang sudah ada otomatis ikut terbawa).'),
     h('div', {}, h('div', { class: 'eyebrow', style: { marginBottom: '8px' } }, 'Kelas'),
       h('div', { class: 'grid-3' }, classes.map((c) => check(c, req.classes.includes(c), (on) => {
         req.classes = on ? [...req.classes, c] : req.classes.filter((x) => x !== c);
@@ -44,7 +59,11 @@ export function openFormBuilder(app) {
       s.projects.length
         ? h('div', { style: { paddingLeft: '23px' } }, check('Hanya siswa yang sudah diberi proyek ini', req.only_project_members, (on) => { req.only_project_members = on; }))
         : null,
-      check('Kehadiran (untuk wali kelas)', req.include_attendance, (on) => { req.include_attendance = on; })),
+      check('Kehadiran: kolom Sakit (S), Izin (I), Alpa (A) + rumus % otomatis', req.include_attendance, (on) => {
+        req.include_attendance = on;
+        effDaysWrap.style.display = on ? 'flex' : 'none';
+      }),
+      effDaysWrap),
     countEl);
   update();
 
@@ -59,9 +78,9 @@ export function openFormBuilder(app) {
           const saved = await api.saveForm({ ...req, project_id: withProject ? req.project_id : null });
           if (!saved) return; // dialog dibatalkan
           modal.setBody(h('div', { class: 'stack' },
-            h('p', { class: 'note ok' }, h('b', {}, 'Form tersimpan. '), `${saved.students} siswa.`),
+            h('p', { class: 'note ok' }, h('b', {}, 'Form tersimpan. '), `${saved.students} siswa beserta isiannya sudah disertakan.`),
             h('p', { class: 'small tabular' }, saved.path),
-            h('p', { class: 'muted' }, 'Kirim file ini ke fasilitator. Setelah diisi dan dikirim kembali, gunakan tombol "Impor form".')));
+            h('p', { class: 'muted' }, 'Kirim file ini ke guru/fasilitator lain. Guru lain cukup membuka menu Isi rapor lalu klik "Impor form" untuk melihat semua siswa dan isian yang sudah kamu buat (atau mengisinya langsung di Excel).')));
           modal.setActions([
             { label: 'Tampilkan di folder', onClick: () => api.revealPath(saved.path).catch((e) => toast(errorText(e), 'error')) },
             { label: 'Selesai', kind: 'primary', onClick: (c) => c() },
@@ -117,19 +136,22 @@ function list(title, items, kind, max = 40) {
 }
 
 function summary(rep, path) {
+  const addedInfo = rep.students_added
+    ? (rep.applied ? `${rep.students_added} siswa baru ditambahkan · ` : `${rep.students_added} siswa baru akan ditambahkan · `)
+    : '';
   const head = rep.applied
-    ? h('p', { class: 'note ok' }, h('b', {}, 'Diterapkan. '), `${rep.changed} isian diperbarui untuk ${rep.students} siswa.`)
+    ? h('p', { class: 'note ok' }, h('b', {}, 'Diterapkan. '), `${addedInfo}${rep.values_set} isian dimuat untuk ${rep.students} siswa.`)
     : rep.changed
-      ? h('p', {}, `${rep.students} siswa ditemukan · ${rep.values_set} isian terisi · `, h('b', {}, `${rep.changed} berbeda dari data sekarang`), '. Periksa lalu klik Terapkan.')
+      ? h('p', {}, `${rep.students} siswa di form · ${addedInfo}${rep.values_set} isian terisi · `, h('b', {}, `${rep.changed} perubahan siap dimasukkan`), '. Periksa lalu klik Terapkan.')
       : h('p', { class: 'note' }, rep.values_set
-        ? 'Tidak ada perubahan: isian di form ini sama dengan data sekarang.'
-        : 'Form ini belum diisi (semua kolom isian kosong).');
+        ? 'Tidak ada perubahan: semua data siswa dan isian di form ini sudah sama dengan data di aplikasi.'
+        : 'Form ini belum memiliki perubahan baru.');
   return h('div', { class: 'stack' },
     h('p', { class: 'small muted tabular' }, rep.project ? `${rep.project} · ${path}` : path),
     head,
-    rep.projects_added && !rep.applied ? h('p', { class: 'small muted' }, `${rep.projects_added} siswa akan diberi proyek ini.`) : null,
+    rep.projects_added && !rep.applied ? h('p', { class: 'small muted' }, `${rep.projects_added} data proyek siswa ikut disertakan.`) : null,
     list('Isian lama yang diganti', rep.overwritten, 'warn'),
     list('Tidak terbaca (dilewati)', rep.invalid, 'danger'),
-    list('Siswa tidak ditemukan (dilewati)', rep.unknown_rows, 'danger'),
+    list('Baris tanpa nama siswa (dilewati)', rep.unknown_rows, 'danger'),
     list('Catatan', rep.notes, 'warn'));
 }

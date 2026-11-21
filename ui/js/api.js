@@ -10,8 +10,10 @@ export const api = {
   studentViews: (className = null) => invoke('student_views', { class_name: className }),
   saveStudentIdentity: (student) => invoke('save_student_identity', { student }),
   deleteStudent: (id) => invoke('delete_student', { id }),
+  deleteClasses: (classes) => invoke('delete_classes', { classes }),
   setScore: (id, key, ph, pts, manual) => invoke('set_score', { id, key, ph, pts, manual }),
   saveReportFields: (id, fields) => invoke('save_report_fields', { id, fields }),
+  setEffectiveDays: (days) => invoke('set_effective_days', { days }),
   assignProject: (className, projectId) =>
     invoke('assign_project', { class_name: className, project_id: projectId }),
 
@@ -19,6 +21,8 @@ export const api = {
   scanExcel: (path) => invoke('scan_excel', { path }),
   importStudents: (path, sheet, classes) => invoke('import_students', { path, sheet, classes }),
   importScores: (path, sheet, classes) => invoke('import_scores', { path, sheet, classes }),
+  importAttendance: (path, sheet, classes, effectiveDays, emptyAsZero) =>
+    invoke('import_attendance', { path, sheet, classes, effective_days: effectiveDays, empty_as_zero: emptyAsZero }),
 
   renderReport: (ids) => invoke('render_report', { ids }),
   exportTemplate: () => invoke('export_template'),

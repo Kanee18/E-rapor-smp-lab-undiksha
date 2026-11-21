@@ -205,6 +205,25 @@ export function rankMap(settings) {
 }
 
 /**
+ * Kalau `raw` cocok dengan kode predikat (mis. "me" → "ME") atau awalan huruf
+ * unik dari satu predikat (mis. "m" → "ME", "e" → "EE"), kembalikan kode resminya.
+ * Kalau angka atau teks lain, kembalikan `raw` yang sudah di-trim.
+ */
+export function expandGradeCode(raw, grading) {
+  const t = String(raw ?? '').trim();
+  if (!t) return '';
+  const bands = sortedBands(grading);
+  const upper = t.toUpperCase();
+  const exact = bands.find((b) => b.code.toUpperCase() === upper);
+  if (exact) return exact.code;
+  if (Number.isNaN(parseNum(t))) {
+    const matches = bands.filter((b) => b.code.toUpperCase().startsWith(upper));
+    if (matches.length === 1) return matches[0].code;
+  }
+  return t;
+}
+
+/**
  * Konversi cepat di tampilan (untuk menyorot tombol saat mengetik angka).
  * Aturannya sama dengan grading.rs; hasil resmi tetap dari Rust.
  */
@@ -332,26 +351,29 @@ export function emptyState(title, text, action, iconName = 'users') {
  * Memakai <style media="screen">, jadi hasil cetak tetap ukuran asli (100%).
  */
 export function fitPreview(frame) {
+  let baseWidth = 0;
   const apply = () => {
     const doc = frame.contentDocument;
     const page = doc?.querySelector('.report');
     if (!page) return;
     let style = doc.getElementById('fit-preview');
     if (!style) {
+      baseWidth = page.offsetWidth;
       style = doc.createElement('style');
       style.id = 'fit-preview';
       style.media = 'screen';
       doc.head.appendChild(style);
     }
-    style.textContent = '';
-    const scale = Math.min(1, (frame.clientWidth - 28) / page.offsetWidth);
+    if (!baseWidth) baseWidth = page.offsetWidth;
+    if (!baseWidth || !frame.clientWidth) return;
+    const scale = Math.min(1, (frame.clientWidth - 28) / baseWidth);
     style.textContent = `body { zoom: ${scale.toFixed(3)}; }
       ::-webkit-scrollbar { width: 12px; height: 12px; }
       ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
       ::-webkit-scrollbar-thumb { background: #C4C7CE; border-radius: 99px; border: 3px solid transparent; background-clip: padding-box; }
       ::-webkit-scrollbar-thumb:hover { background-color: #A5A9B2; }`;
   };
-  frame.addEventListener('load', apply);
+  frame.addEventListener('load', () => { baseWidth = 0; apply(); });
   const ro = new ResizeObserver(() => {
     if (!frame.isConnected) { ro.disconnect(); return; }
     apply();

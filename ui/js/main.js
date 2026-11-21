@@ -265,6 +265,33 @@ async function openAfterUnlock() {
   lastActive = Date.now();
   route();
   if (app.notice) { toast(app.notice, 'error', 9000); app.notice = null; }
+  optimizeStoredLogos();
+}
+
+/** Perkecil logo lama di data.json yang ukurannya terlalu besar supaya halaman Cetak tidak berat. */
+async function optimizeStoredLogos() {
+  const s = app.data?.settings;
+  if (!s) return;
+  let changed = false;
+  const copy = structuredClone(s);
+  for (const key of ['logo', 'university_logo']) {
+    const v = copy[key];
+    if (typeof v === 'string' && v.startsWith('data:image/') && v.length > 25_000) {
+      const smaller = await pengaturan.shrinkLogo(v, 220);
+      if (smaller && smaller.length < v.length) {
+        copy[key] = smaller;
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    try {
+      await api.saveSettings(copy);
+      await app.reload();
+    } catch {
+      /* abaikan bila gagal */
+    }
+  }
 }
 
 // kunci otomatis kalau tidak ada aktivitas

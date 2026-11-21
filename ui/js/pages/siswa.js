@@ -8,12 +8,13 @@ export async function render(ctx) {
   setTitle('Data siswa', 'Diambil dari ekspor Dapodik. Yang disimpan hanya nama, NIS, NISN, jenis kelamin, dan kelas.');
   const rerender = async () => { await app.reload(); content.replaceChildren(); actions.replaceChildren(); await render(ctx); };
 
+  const classes = app.classes();
   actions.append(
+    ...(classes.length ? [button('Hapus kelas', { kind: 'danger', onClick: () => deleteClassesDialog(app, rerender) })] : []),
     button('Tambah siswa', { onClick: () => editStudent(app, null, rerender) }),
     button('Impor dari Excel', { kind: 'primary', onClick: () => importWizard('students', rerender) }),
   );
 
-  const classes = app.classes();
   if (!app.data.students.length) {
     content.appendChild(emptyState('Belum ada siswa',
       'Pilih file ekspor Dapodik (.xls atau .xlsx). Kelas IX dipilih otomatis; kelas lain bisa dicentang.',
@@ -74,6 +75,70 @@ function editStudent(app, s, onSaved) {
       { label: 'Batal', kind: 'quiet', onClick: (c) => c() },
       { label: 'Simpan', kind: 'primary', onClick: async (close) => {
         try { await api.saveStudentIdentity(v); toast('Tersimpan', 'ok'); close(); onSaved(); } catch (e) { toast(errorText(e), 'error'); }
+      } },
+    ],
+  });
+}
+
+/** Dialog hapus kelas: pilih satu/beberapa kelas → konfirmasi → hapus (dengan backup otomatis). */
+function deleteClassesDialog(app, onDone) {
+  const classes = app.classes();
+  const counts = app.classCounts();
+  const chosen = new Set(app.selectedClass && classes.includes(app.selectedClass) ? [app.selectedClass] : []);
+  const boxes = new Map();
+  const summary = h('p', { class: 'hint' });
+
+  const refresh = () => {
+    for (const [name, input] of boxes) input.checked = chosen.has(name);
+    const n = [...chosen].reduce((a, c) => a + (counts[c] || 0), 0);
+    summary.textContent = chosen.size ? `Dipilih: ${chosen.size} kelas, ${n} siswa.` : 'Belum ada kelas yang dipilih.';
+  };
+
+  // Pintasan per tingkat, mis. "Semua kelas IX" (IX-1, IX-2, ...).
+  const grades = [...new Set(classes.map((c) => c.split('-')[0].trim()))];
+  const shortcuts = grades.length > 1 || classes.length > 1
+    ? h('div', { class: 'row', style: { display: 'flex', flexWrap: 'wrap', gap: '8px' } },
+      grades.map((g) => button(`Semua kelas ${g}`, { kind: 'quiet', onClick: () => {
+        const group = classes.filter((c) => c.split('-')[0].trim() === g);
+        const allOn = group.every((c) => chosen.has(c));
+        for (const c of group) allOn ? chosen.delete(c) : chosen.add(c);
+        refresh();
+      } })))
+    : null;
+
+  const grid = h('div', { class: 'grid-3' }, classes.map((c) => {
+    const input = h('input', { type: 'checkbox', onchange: (e) => { e.target.checked ? chosen.add(c) : chosen.delete(c); refresh(); } });
+    boxes.set(c, input);
+    return h('label', { class: 'check' }, input, `${c} `, h('span', { class: 'muted small' }, `(${counts[c] || 0} siswa)`));
+  }));
+
+  refresh();
+  openModal({
+    title: 'Hapus kelas',
+    wide: true,
+    body: h('div', { class: 'stack' },
+      h('div', { class: 'note warn' },
+        'Semua siswa di kelas yang dipilih akan dihapus, termasuk nilai, isian rapor, wali kelas, dan tanda tangannya. ',
+        'Sebelum menghapus, data dibackup otomatis ke folder backup.'),
+      shortcuts,
+      grid,
+      summary),
+    actions: [
+      { label: 'Batal', kind: 'quiet', onClick: (c) => c() },
+      { label: 'Hapus kelas terpilih', kind: 'danger solid', onClick: async (close) => {
+        const list = classes.filter((c) => chosen.has(c));
+        if (!list.length) { toast('Pilih minimal satu kelas', 'error'); return; }
+        const n = list.reduce((a, c) => a + (counts[c] || 0), 0);
+        const ok = await confirmBox(`Yakin hapus ${list.length} kelas (${list.join(', ')}) beserta ${n} siswanya? Tindakan ini tidak bisa dibatalkan dari layar ini, tapi bisa dipulihkan dari backup.`,
+          { title: 'Hapus kelas', ok: 'Ya, hapus', danger: true });
+        if (!ok) return;
+        try {
+          const r = await api.deleteClasses(list);
+          close();
+          if (list.includes(app.selectedClass)) app.selectedClass = null;
+          toast(`${r.classes_deleted || list.length} kelas dan ${r.students_deleted} siswa dihapus`, 'ok', 5000);
+          onDone();
+        } catch (e) { toast(errorText(e), 'error'); }
       } },
     ],
   });
