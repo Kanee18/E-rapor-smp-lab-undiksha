@@ -732,3 +732,24 @@ body.locked > aside, body.locked > main { visibility: hidden; }
 }
 .sec-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
 .sec-row label.field { width: 270px; }
+
+/* ------------------------------------------------------------------ uji coba guru: filter "belum lengkap" */
+.index-filter { padding: 0 12px 8px; }
+.index-filter .segs { display: flex; width: 100%; }
+.index-filter .seg { flex: 1; height: 28px; padding: 0 6px; font-size: 12.5px; white-space: nowrap; }
+.doc-foot .row { gap: 8px; justify-content: flex-end; }
+
+/* impor data siswa format bebas: pilihan kolom */
+.map-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 14px; }
+.map-grid select { font-size: 13px; }
+
+/* ------------------------------------------------------------------ jenjang (SD / SMP / SMA) */
+.level-switch { display: flex; gap: 2px; padding: 3px; margin: -8px 2px 0; border-radius: 11px; background: rgba(20, 24, 35, .055); }
+.level-switch:empty { display: none; }
+.level-switch .lv {
+  flex: 1; height: 30px; border: 0; border-radius: 8px; background: none; cursor: pointer;
+  font-size: 12.5px; font-weight: 600; color: var(--text-2); transition: background .15s, color .15s, box-shadow .15s;
+}
+.level-switch .lv:hover { color: var(--text); }
+.level-switch .lv.on { background: var(--panel); color: var(--accent-2); box-shadow: var(--shadow-xs), 0 0 0 1px rgba(20, 24, 35, .06); }
+.level-switch .lv:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

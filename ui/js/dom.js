@@ -123,6 +123,26 @@ export function swapIn(el) {
   el.animate([{ opacity: 0.2 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' });
 }
 
+/** Jenjang dari nama kelas: "I-C" → SD, "IX-1" → SMP, "X-B" → SMA (null kalau tidak jelas). */
+export function levelOfClass(name) {
+  const left = String(name || '').split('-')[0].trim().toUpperCase();
+  const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10, XI: 11, XII: 12 };
+  const g = ROMAN[left] ?? (/^\d{1,2}$/.test(left) ? Number(left) : null);
+  if (!g) return null;
+  return g <= 6 ? 'SD' : g <= 9 ? 'SMP' : g <= 12 ? 'SMA' : null;
+}
+
+/** Catatan peringatan kalau kelas yang diimpor tampaknya milik jenjang lain. */
+export function levelWarning(classNames, currentLevel) {
+  if (!currentLevel) return '';
+  const other = classNames.filter((c) => { const l = levelOfClass(c); return l && l !== currentLevel; });
+  if (!other.length) return '';
+  const lv = levelOfClass(other[0]);
+  return h('div', { class: 'note warn small' },
+    h('b', {}, `Kelas ${other.slice(0, 4).join(', ')}${other.length > 4 ? '…' : ''} tampaknya kelas ${lv}, `),
+    `sedangkan yang sedang dibuka jenjang ${currentLevel}. Kalau benar kelas ${lv}, batalkan dulu lalu pindah ke jenjang ${lv} lewat tombol jenjang di kiri atas.`);
+}
+
 export function button(label, { kind = '', iconName, onClick, title, disabled } = {}) {
   return h('button', { type: 'button', class: `btn ${kind}`.trim(), onclick: onClick, title, disabled }, iconName ? icon(iconName) : null, label);
 }

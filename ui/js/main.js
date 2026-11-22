@@ -34,11 +34,17 @@ export const app = {
   selectedClass: null,
   selectedStudentId: null,
 
+  /** Jenjang yang sedang dibuka ("SD" | "SMP" | "SMA") dan daftar semua jenjang. */
+  level: 'SMP',
+  levels: [],
+
   async reload() {
     const r = await api.getData();
     this.data = r.data;
     this.dataDir = r.data_dir;
     this.customTemplate = r.custom_template;
+    this.level = r.level || 'SMP';
+    this.levels = await api.listLevels().catch(() => []);
     if (r.warning) {
       openModal({ title: 'Perhatian', body: h('p', { class: 'note warn' }, r.warning) });
     }
@@ -113,7 +119,55 @@ function renderNav(activeId) {
   }
 }
 
+function renderLevels() {
+  const box = document.getElementById('level-switch');
+  box.replaceChildren(...app.levels.map((l) => h('button', {
+    type: 'button', role: 'radio', 'aria-checked': String(l.active), class: `lv${l.active ? ' on' : ''}`,
+    title: l.exists ? `${l.school} · ${l.students} siswa` : `${l.school} · belum ada data`,
+    onclick: () => switchLevel(l),
+  }, l.label)));
+}
+
+/** Pindah jenjang: simpan isian halaman ini dulu; jenjang baru boleh menyalin pengaturan. */
+async function switchLevel(target) {
+  if (target.active || locking) return;
+  if (leaveHandler && (await leaveHandler()) === false) return;
+  let copy = false;
+  if (!target.exists) {
+    copy = await new Promise((resolve) => {
+      let picked = null;
+      openModal({
+        title: `Mulai jenjang ${target.label}`,
+        body: h('div', { class: 'stack' },
+          h('p', {}, `Jenjang ${target.label} belum punya data. Data ${target.label} disimpan terpisah dari ${app.level}: siswa, kop, kepala sekolah, mapel, indikator, proyek, wali kelas, tanda tangan, backup, dan arsip.`),
+          h('p', { class: 'note small' }, `Salin pengaturan dari ${app.level} = predikat, mapel & indikator, ATL, proyek, bank kalimat, judul rapor, dan logo ikut disalin (bisa diubah nanti). Nama sekolah, kepala sekolah, tanda tangan, dan kelas tidak disalin.`)),
+        onClose: () => resolve(picked),
+        actions: [
+          { label: 'Batal', kind: 'quiet', onClick: (c) => { picked = null; c(); } },
+          { label: 'Pengaturan bawaan', onClick: (c) => { picked = false; c(); } },
+          { label: `Salin pengaturan dari ${app.level}`, kind: 'primary', onClick: (c) => { picked = true; c(); } },
+        ],
+      });
+    });
+    if (copy === null) return;
+  }
+  try {
+    await api.switchLevel(target.id, copy);
+  } catch (e) {
+    toast(errorText(e), 'error');
+    return;
+  }
+  leaveHandler = null;
+  currentId = null;
+  app.selectedClass = null;
+  app.selectedStudentId = null;
+  await app.reload();
+  toast(`Sekarang membuka data ${app.levels.find((l) => l.active)?.school || target.label}`, 'ok');
+  if (location.hash === '#beranda' || !location.hash) route(); else location.hash = 'beranda';
+}
+
 function renderRail() {
+  renderLevels();
   const s = app.data?.settings;
   if (!s) return;
   document.getElementById('rail-meta').textContent = 'National Plus Class';
@@ -142,7 +196,7 @@ let leaveHandler = null;
 function setTitle(title, desc = '') {
   document.getElementById('page-title').textContent = title;
   document.getElementById('page-desc').textContent = desc;
-  document.title = `${title} — E-Raport`;
+  document.title = `${title} — E-Raport ${app.level}`;
 }
 
 async function route() {

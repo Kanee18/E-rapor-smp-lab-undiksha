@@ -2,3 +2,6 @@ node_modules/
 src-tauri/target/
 src-tauri/gen/
 *.log
+
+# Data siswa asli (NISN/NIS, data pribadi) - jangan masuk repo
+Data_siswa/

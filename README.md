@@ -29,6 +29,20 @@ dalam format Excel yang sudah biasa dipakai, atau mengisinya langsung di aplikas
      headless (selalu ada di Windows 10/11), ±12 detik per kelas.
    - **Leger Excel**: satu sheet per kelas (nilai, predikat, ATL, proyek, kehadiran, status rapor)
      + sheet *Rekap* berisi sebaran predikat per mapel termasuk jumlah nilai di bawah rentang.
+   - **Data siswa format bebas** (SD, SMA, daftar dari guru): kalau file bukan ekspor Dapodik,
+     aplikasi menebak baris judul (juga judul 2 baris/sel digabung), kolom Nama, NIS/Induk, NISN,
+     L/P, Kelas — dari judul kolom **dan** isinya (10 digit = NISN). Kelas ditebak dari kolom kelas,
+     judul tabel ("KELAS : IC"), nama sheet, atau nama file ("KELAS XB") → `I-C`, `X-B`.
+     Pratinjau + pilihan kolom bisa dikoreksi sebelum impor (`src-tauri/src/student_flex.rs`).
+     Siswa lama dicocokkan lewat NISN, lalu NIS **hanya bila kelas/nama juga cocok** (NIS hanya unik
+     per sekolah), lalu nama + kelas.
+   - **Jenjang SD / SMP / SMA** (`src-tauri/src/levels.rs`): tiap jenjang punya folder data sendiri
+     (siswa, pengaturan/kop/kepala sekolah/mapel/indikator/proyek, wali kelas, tanda tangan, backup,
+     arsip). SMP = folder utama `Dokumen\E-Raport` (data lama tidak dipindah), SD = `…\SD`,
+     SMA = `…\SMA`; jenjang terakhir diingat di `jenjang.json`. Pemilih jenjang di sidebar; jenjang
+     baru bisa menyalin pengaturan (tanpa identitas sekolah/kepala sekolah/kelas). "Pindahkan kelas…"
+     memindahkan kelas antar jenjang (keduanya dibackup dulu). Impor & pemulihan memperingatkan bila
+     kelas/backup tampaknya milik jenjang lain. Kata sandi aplikasi berlaku untuk semua jenjang.
 5. **Data & arsip** — *Kata sandi aplikasi* (opsional): aplikasi meminta kata sandi saat dibuka,
    terkunci otomatis jika tidak dipakai (default 10 menit) dan bisa dikunci dengan Ctrl+L.
    Kata sandi & kode pemulihan disimpan sebagai hash Argon2id di `keamanan.json` (terpisah dari

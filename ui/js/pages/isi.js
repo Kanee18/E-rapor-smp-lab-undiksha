@@ -3,12 +3,12 @@
 // Isian tersimpan otomatis sesaat setelah berhenti mengetik/mengklik.
 import { api } from '../api.js';
 import {
-  h, autoGrow, avatar, button, icon, classTabs, expandGradeCode, localGrade, debounce, emptyState, errorText, fitPreview, fmtNum, link, openModal,
+  h, autoGrow, avatar, button, icon, classTabs, confirmBox, expandGradeCode, localGrade, debounce, emptyState, errorText, fitPreview, fmtNum, link, openModal,
   rankMap, ratingControl, searchBox, stamp, swapIn, toast, toolbar,
 } from '../dom.js';
 import { importFormFlow, openFormBuilder } from '../form-tools.js';
 import { importWizard } from '../import-wizard.js';
-import { appendSentence, openPhraseBank, phraseBankList } from '../narrative.js';
+import { appendSentence, displayName, draftNarrative, openPhraseBank, phraseBankList } from '../narrative.js';
 
 export async function render(ctx) {
   const { app, content, actions, setTitle } = ctx;
@@ -32,6 +32,19 @@ export async function render(ctx) {
   const settings = app.data.settings;
   const ranks = rankMap(settings);
   const cls = app.ensureClass();
+  // "Belum lengkap" = isian yang memang diisi guru di halaman ini: ATL, proyek (nilai + narasi), kehadiran.
+  // (Nilai mapel di bawah rentang tidak dihitung: itu bukan sesuatu yang bisa dilengkapi di sini.)
+  const isiIncomplete = (v) => {
+    const p = v.progress;
+    return p.atl_done < p.atl_total
+      || (settings.projects.length > 0 && (p.projects === 0 || p.projects_done < p.projects))
+      || !p.attendance;
+  };
+  let onlyIncomplete = Boolean(app.isiOnlyIncomplete);
+  /** Draf narasi untuk satu proyek siswa; '' kalau Understanding Level belum diisi. */
+  const makeDraft = (student, p) => draftNarrative({
+    settings, student, projectId: p.project_id, predicate: localGrade(p.understanding, settings.grading).code,
+  });
   let views = await api.studentViews(cls);
   let selectedId = views.some((v) => v.student.id === app.selectedStudentId) ? app.selectedStudentId : views[0]?.student.id;
   let mode = app.isiMode || 'student'; // 'student' | 'table'
@@ -47,19 +60,23 @@ export async function render(ctx) {
     const entries = [...pending.entries()];
     pending.clear();
     setSaveState('saving', 'Menyimpan…');
-    try {
-      for (const [id, fields] of entries) {
+    for (let k = 0; k < entries.length; k++) {
+      const [id, fields] = entries[k];
+      try {
         const view = await api.saveReportFields(id, fields);
         views = views.map((v) => (v.student.id === id ? view : v));
         onSaved(view);
+      } catch (e) {
+        // Kembalikan yang gagal + yang belum sempat disimpan ke antrean (kecuali sudah ada
+        // isian yang lebih baru untuk siswa itu), supaya tidak ada isian yang hilang diam-diam.
+        for (const [rid, rfields] of entries.slice(k)) if (!pending.has(rid)) pending.set(rid, rfields);
+        setSaveState('error', 'Gagal menyimpan');
+        toast(`${errorText(e)} — isian belum tersimpan, akan dicoba lagi.`, 'error');
+        return false;
       }
-      setSaveState('', 'Tersimpan');
-      return true;
-    } catch (e) {
-      setSaveState('error', 'Gagal menyimpan');
-      toast(errorText(e), 'error');
-      return false;
     }
+    setSaveState(pending.size ? 'saving' : '', pending.size ? 'Belum tersimpan' : 'Tersimpan');
+    return true;
   }
   const saveSoon = debounce(saveNow, 500);
   const queue = (id, fields) => { pending.set(id, structuredClone(fields)); setSaveState('saving', 'Belum tersimpan'); saveSoon(); };
@@ -133,14 +150,41 @@ export async function render(ctx) {
   function renderStudentMode() {
     let query = '';
     const listBox = h('div', { class: 'index-list' });
+    const filterBar = h('div', { class: 'index-filter' });
     const docHead = h('div', { class: 'doc-head' });
     const docBody = h('div', { class: 'doc-body' });
     const docBox = h('div', { class: 'sheet doc' }, docHead, docBody);
     const split = content.appendChild(h('div', { class: 'split' },
-      h('div', { class: 'sheet index' }, searchBox('Cari siswa', (q) => { query = q; drawList(); }), listBox),
+      h('div', { class: 'sheet index' }, searchBox('Cari siswa', (q) => { query = q; drawList(); }), filterBar, listBox),
       docBox));
 
-    const visible = () => views.filter((v) => !query || v.student.name.toLowerCase().includes(query));
+    // Siswa yang sedang dibuka tetap tampil walaupun sudah lengkap, supaya tidak "hilang" saat diisi.
+    const visible = () => views.filter((v) => (!query || v.student.name.toLowerCase().includes(query))
+      && (!onlyIncomplete || isiIncomplete(v) || v.student.id === selectedId));
+    /** Siswa berikutnya (urutan kelas, berputar) yang isiannya belum lengkap. */
+    const nextIncomplete = () => {
+      const i = views.findIndex((v) => v.student.id === selectedId);
+      for (let k = 1; k < views.length; k++) {
+        const v = views[(i + k + views.length) % views.length];
+        if (isiIncomplete(v)) return v;
+      }
+      return null;
+    };
+    function drawFilter() {
+      const todo = views.filter(isiIncomplete).length;
+      filterBar.replaceChildren(h('div', { class: 'segs' },
+        [[false, `Semua ${views.length}`], [true, `Belum lengkap ${todo}`]].map(([val, label]) => h('button', {
+          type: 'button', class: `seg wide${onlyIncomplete === val ? ' on' : ''}`, 'aria-pressed': String(onlyIncomplete === val),
+          onclick: async () => {
+            if (onlyIncomplete === val) return;
+            await flush();
+            onlyIncomplete = val;
+            app.isiOnlyIncomplete = val;
+            drawList(true);
+            drawDoc();
+          },
+        }, label))));
+    }
     const neighbour = (step) => {
       const list = visible().some((v) => v.student.id === selectedId) ? visible() : views;
       const i = list.findIndex((v) => v.student.id === selectedId);
@@ -170,6 +214,11 @@ export async function render(ctx) {
         h('span', { class: `dot${done ? ' done' : started ? ' part' : ''}`, title: done ? 'Lengkap' : `${v.issues.length} catatan` }),
         h('span', { class: 'st' }, done ? 'Lengkap' : `ATL ${p.atl_done}/${p.atl_total} · proyek ${p.projects_done}/${p.projects}`));
       }));
+      if (!listBox.children.length) {
+        listBox.appendChild(h('p', { class: 'muted small', style: { padding: '14px 10px' } },
+          onlyIncomplete ? 'Semua siswa di kelas ini sudah lengkap.' : 'Tidak ada siswa yang cocok.'));
+      }
+      drawFilter();
       if (reveal) listBox.querySelector('.index-item.active')?.scrollIntoView({ block: 'nearest' });
     }
 
@@ -188,6 +237,7 @@ export async function render(ctx) {
       onSaved = (view) => {
         if (view.student.id === selectedId) drawIssues(view);
         drawList();
+        drawFootText();
       };
 
       const indicatorEditor = (defaultText, current, onChange) => {
@@ -217,13 +267,22 @@ export async function render(ctx) {
         return h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Teacher Narrative Feedback'), ta,
           h('div', { class: 'narr-tools' },
             h('span', { class: 'muted' }, 'Bahasa Inggris, 2–4 kalimat: yang sudah baik dan langkah berikutnya.'),
+            h('span', { class: 'row', style: { gap: '14px' } },
+            link('Draf otomatis', async () => {
+              const draft = makeDraft(s, p);
+              if (!draft) { toast('Isi Understanding Level dulu, supaya draf sesuai pencapaian siswa', 'error'); return; }
+              if (ta.value.trim() && !(await confirmBox('Ganti narasi yang sudah ada dengan draf baru?', { ok: 'Ganti' }))) return;
+              ta.value = draft;
+              ta.dispatchEvent(new Event('input'));
+              toast('Draf narasi dibuat. Baca dan sesuaikan dengan pengamatan Anda.', 'ok');
+            }),
             link('Bank kalimat…', () => openPhraseBank({
               settings, student: s,
               theme: settings.projects.find((pc) => pc.id === p.project_id)?.theme,
               predicate: localGrade(p.understanding, settings.grading).code,
               getText: () => ta.value,
               onPick: (sentence) => { ta.value = appendSentence(ta.value, sentence); ta.dispatchEvent(new Event('input')); },
-            }))));
+            })))));
       };
 
       const projBox = h('div', {});
@@ -267,6 +326,15 @@ export async function render(ctx) {
 
       const prev = neighbour(-1);
       const next = neighbour(1);
+      const nextTodo = nextIncomplete();
+      const footText = h('span', { class: 'small muted' });
+      const drawFootText = () => {
+        const todo = views.filter(isiIncomplete).length;
+        footText.textContent = todo
+          ? `${todo} siswa di ${cls} belum lengkap · tersimpan otomatis`
+          : `Semua siswa di ${cls} sudah lengkap · tersimpan otomatis`;
+      };
+      drawFootText();
       const pos = visible().findIndex((x) => x.student.id === s.id);
       const navBtn = (iconName, label, target) => h('button', {
         type: 'button', class: 'icon-btn', title: target ? `${label}: ${target.student.name}` : label, 'aria-label': label,
@@ -321,10 +389,15 @@ export async function render(ctx) {
         section('2', 'Transdisciplinary Unit of Inquiry', null, projBox, h('div', { style: { marginTop: '12px' } }, addProject)),
         section('3', 'Core Subject Progress & Evaluation', 'Nilai diambil dari halaman Nilai mapel. Indikator boleh diubah khusus untuk siswa ini.', subjectRows),
         h('div', { class: 'doc-foot' },
-          h('span', { class: 'small muted' }, 'Semua isian tersimpan otomatis.'),
-          next
-            ? h('button', { type: 'button', class: 'btn primary', onclick: () => select(next.student.id) }, `Lanjut ke ${next.student.name}`, icon('arrow'))
-            : h('span', { class: 'small muted' }, 'Ini siswa terakhir di daftar.')),
+          footText,
+          h('div', { class: 'row' },
+            nextTodo && nextTodo.student.id !== next?.student.id
+              ? h('button', { type: 'button', class: 'btn', title: 'Lompat ke siswa berikutnya yang isiannya belum lengkap', onclick: () => select(nextTodo.student.id) },
+                `Ke yang belum lengkap: ${displayName(nextTodo.student.name)}`)
+              : null,
+            next
+              ? h('button', { type: 'button', class: 'btn primary', onclick: () => select(next.student.id) }, `Lanjut ke ${next.student.name}`, icon('arrow'))
+              : h('span', { class: 'small muted' }, 'Ini siswa terakhir di daftar.'))),
       );
       docBody.scrollTop = 0;
       setSaveState('', '');
@@ -351,13 +424,37 @@ export async function render(ctx) {
     const rows = [];
     const rowById = new Map();
 
+    // Penyaring baris: pencarian + "hanya yang belum lengkap". Daftar "belum lengkap" diambil saat
+    // dicentang, jadi baris tidak tiba-tiba hilang ketika gurunya baru selesai mengisi.
+    let searchQ = '';
+    let todoSet = null;
+    const applyRowFilter = () => {
+      for (const r of rows) {
+        r.tr.hidden = Boolean((searchQ && !r.view.student.name.toLowerCase().includes(searchQ))
+          || (todoSet && !todoSet.has(r.view.student.id)));
+      }
+    };
+    const setOnlyIncomplete = (on) => {
+      onlyIncomplete = on;
+      app.isiOnlyIncomplete = on;
+      todoSet = on ? new Set(rows.filter((r) => isiIncomplete(r.view)).map((r) => r.view.student.id)) : null;
+      applyRowFilter();
+      onlyLabel.lastChild.textContent = on ? ` Hanya yang belum lengkap (${todoSet.size})` : ' Hanya yang belum lengkap';
+    };
+    const onlyLabel = h('label', { class: 'check small', title: 'Tampilkan siswa yang ATL, proyek, atau kehadirannya belum lengkap' },
+      h('input', { type: 'checkbox', checked: onlyIncomplete, onchange: (e) => setOnlyIncomplete(e.target.checked) }),
+      h('span', {}, ' Hanya yang belum lengkap'));
+    const draftAllBtn = hasProj
+      ? button('Draf narasi kosong…', { kind: 'sm', onClick: () => draftAllDialog() })
+      : null;
+
     const subbar = h('div', { class: 'table-subbar' },
       legend,
-      h('div', { style: { display: 'flex', alignItems: 'center', gap: '12px' } },
+      h('div', { style: { display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' } },
         saveState,
-        searchBox('Cari siswa', (q) => {
-          for (const r of rows) r.tr.hidden = Boolean(q && !r.view.student.name.toLowerCase().includes(q));
-        })));
+        onlyLabel,
+        draftAllBtn,
+        searchBox('Cari siswa', (q) => { searchQ = q; applyRowFilter(); })));
 
     const head1 = h('tr', {},
       h('th', { class: 'sticky idx', rowSpan: 2 }, 'No'),
@@ -507,11 +604,15 @@ export async function render(ctx) {
               const existingIdx = fields.projects.findIndex((p) => p.project_id === val);
               if (existingIdx >= 0) {
                 activeProjIdx = existingIdx;
-              } else if (fields.projects[activeProjIdx]) {
-                fields.projects[activeProjIdx].project_id = val;
               } else {
-                fields.projects.push({ project_id: val, understanding: '', inquiry: '', narrative: '' });
-                activeProjIdx = fields.projects.length - 1;
+                const cur = fields.projects[activeProjIdx];
+                const curHasData = cur && (cur.understanding.trim() || cur.inquiry.trim() || cur.narrative.trim());
+                if (cur && !curHasData) {
+                  cur.project_id = val;
+                } else {
+                  fields.projects.push({ project_id: val, understanding: '', inquiry: '', narrative: '' });
+                  activeProjIdx = fields.projects.length - 1;
+                }
               }
             }
             refreshProjUI();
@@ -552,18 +653,20 @@ export async function render(ctx) {
           const p = getActiveProject();
           const curId = p?.project_id ?? '';
           const known = settings.projects.some((pc) => pc.id === curId);
+          const hasProjData = (pid) => fields.projects.some((ep) => ep.project_id === pid && (ep.understanding.trim() || ep.inquiry.trim() || ep.narrative.trim()));
           projSelect.replaceChildren(
-            h('option', { value: '', selected: !curId }, '— Belum ada —'),
-            ...settings.projects.map((pc) => h('option', { value: pc.id, selected: pc.id === curId }, projectLabel(pc))),
-            curId && !known ? h('option', { value: curId, selected: true }, '(proyek dihapus)') : null,
+            h('option', { value: '', selected: !curId }, curId ? '— Hapus proyek ini —' : '— Belum ada —'),
+            ...settings.projects.map((pc) => h('option', { value: pc.id, selected: pc.id === curId },
+              `${hasProjData(pc.id) ? '✓ ' : ''}${projectLabel(pc)}`)),
+            curId && !known ? h('option', { value: curId, selected: true }, '(proyek dihapus)') : '',
           );
           projSelect.value = curId;
           projSelect.classList.toggle('empty', !curId);
           projSelect.title = p ? (settings.projects.find((pc) => pc.id === curId)?.theme || '') : 'Pilih proyek atau langsung ketik nilai Understanding/Inquiry';
           if (fields.projects.length > 1) {
             moreBadge.hidden = false;
-            moreBadge.textContent = `+${fields.projects.length - 1}`;
-            moreBadge.title = `Siswa ini punya ${fields.projects.length} proyek. Pilih dari daftar atau klik nama siswa untuk melihat semua.`;
+            moreBadge.textContent = `${fields.projects.length} proyek`;
+            moreBadge.title = `Siswa ini punya ${fields.projects.length} proyek (${fields.projects.map((ep) => settings.projects.find((pc) => pc.id === ep.project_id)?.name || ep.project_id).join(', ')}). Pilih dari daftar untuk berpindah proyek atau klik nama siswa untuk melihat semua.`;
           } else {
             moreBadge.hidden = true;
           }
@@ -574,7 +677,7 @@ export async function render(ctx) {
           narrBtn.classList.toggle('filled', Boolean(text));
           narrBtn.title = text || 'Klik untuk mengisi narasi & membuka bank kalimat';
           narrBtn.replaceChildren(
-            text ? h('span', { class: 'ic' }, icon('check')) : null,
+            text ? h('span', { class: 'ic' }, icon('check')) : '', // (bukan null: replaceChildren menulisnya sebagai teks)
             h('span', { class: 'txt' }, text || '+ Isi narasi…'),
           );
         }
@@ -674,8 +777,10 @@ export async function render(ctx) {
         curIdx = idx;
         const r = rows[idx];
         const s = r.view.student;
+        const hadProject = Boolean(r.getActiveProject());
         const p = r.ensureProject();
         r.refreshProjUI();
+        if (p && !hadProject) r.changed(); // proyek baru dibuat → simpan, supaya layar = data
         if (!p) {
           modal.setBody(h('p', { class: 'note warn' }, 'Belum ada proyek di Pengaturan.'));
           return;
@@ -735,6 +840,15 @@ export async function render(ctx) {
           h('label', { class: 'field' },
             h('span', { class: 'lbl' }, 'Teacher Narrative Feedback'),
             ta),
+          h('div', { class: 'row' },
+            button('Draf otomatis', { kind: 'sm', onClick: async () => {
+              const draft = makeDraft(s, p);
+              if (!draft) { toast('Isi Understanding Level dulu, supaya draf sesuai pencapaian siswa', 'error'); return; }
+              if (ta.value.trim() && !(await confirmBox('Ganti narasi yang sudah ada dengan draf baru?', { ok: 'Ganti' }))) return;
+              ta.value = draft;
+              ta.dispatchEvent(new Event('input'));
+            } }),
+            h('span', { class: 'small muted' }, 'Disusun dari bank kalimat sesuai Understanding Level; tetap bisa disunting.')),
           phraseBox));
 
         modal.setActions([
@@ -749,7 +863,109 @@ export async function render(ctx) {
 
     sheet = h('div', { class: 'sheet scroll cells-wrap' },
       h('table', { class: 'ledger cells' }, h('thead', {}, head1, head2), tbody));
+
+    // ---------- Tempel dari Excel (Ctrl+V): blok sel menyebar ke bawah/kanan mulai dari sel aktif.
+    // Kalau kolom pertama yang ditempel berisi nama siswa, baris dicocokkan lewat nama (urutan di
+    // Excel tidak harus sama dengan urutan di sini).
+    const colOrder = [...settings.atl.map((_, i) => `atl-${i}`), ...(hasProj ? ['uoi-u', 'uoi-i'] : []), 'att-s', 'att-i', 'att-a', 'att'];
+    const normName = (t) => String(t).toLowerCase().normalize('NFKD').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const rowByName = (raw) => {
+      const n = normName(raw);
+      if (!n) return -1;
+      const exact = rows.findIndex((r) => normName(r.view.student.name) === n);
+      if (exact >= 0) return exact;
+      const starts = rows.map((r, i) => [r, i]).filter(([r]) => normName(r.view.student.name).startsWith(n));
+      return starts.length === 1 ? starts[0][1] : -1;
+    };
+    sheet.addEventListener('paste', (e) => {
+      const t = e.target;
+      if (!(t instanceof HTMLInputElement) || t.dataset.row === undefined || !colOrder.includes(t.dataset.col)) return;
+      const lines = (e.clipboardData?.getData('text/plain') ?? '').replace(/\r/g, '').split('\n');
+      while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+      const grid = lines.map((l) => l.split('\t'));
+      if (!grid.length || (grid.length === 1 && grid[0].length === 1)) return; // satu nilai: tempel biasa
+      e.preventDefault();
+      const startRow = Number(t.dataset.row);
+      const startCol = colOrder.indexOf(t.dataset.col);
+      const firstCells = grid.map((r) => r[0]).filter((c) => c.trim());
+      const byName = grid[0].length > 1 && firstCells.length
+        && firstCells.filter((c) => rowByName(c) >= 0).length >= Math.ceil(firstCells.length / 2);
+      const visibleRows = rows.map((r, i) => i).filter((i) => i >= startRow && !rows[i].tr.hidden);
+      let filled = 0;
+      let invalid = 0;
+      let extraRows = 0;
+      const unknownNames = [];
+      grid.forEach((cells, li) => {
+        let rowIdx;
+        let values = cells;
+        if (byName) {
+          rowIdx = rowByName(cells[0]);
+          values = cells.slice(1);
+          if (rowIdx < 0) { if (cells[0].trim()) unknownNames.push(cells[0].trim()); return; }
+        } else {
+          rowIdx = visibleRows[li];
+          if (rowIdx === undefined) { extraRows++; return; }
+        }
+        values.forEach((raw, ci) => {
+          const colKey = colOrder[startCol + ci];
+          const v = String(raw).trim();
+          if (!colKey || !v) return; // sel kosong di Excel tidak menghapus isian
+          const el = sheet.querySelector(`input[data-row="${rowIdx}"][data-col="${colKey}"]`);
+          if (!el || el.disabled) return;
+          el.value = v;
+          el.dispatchEvent(new Event('input'));
+          el.dispatchEvent(new Event('blur'));
+          filled++;
+          if (el.classList.contains('invalid') || (el.classList.contains('sia-in') && parseDayInput(v) === null)) invalid++;
+        });
+      });
+      const parts = [`${filled} sel terisi dari Excel`];
+      if (invalid) parts.push(`${invalid} tidak terbaca (ditandai merah)`);
+      if (extraRows) parts.push(`${extraRows} baris lebih dari jumlah siswa dilewati`);
+      if (unknownNames.length) parts.push(`nama tidak ditemukan: ${unknownNames.slice(0, 3).join(', ')}${unknownNames.length > 3 ? '…' : ''}`);
+      toast(parts.join(' · '), invalid || unknownNames.length || extraRows ? 'error' : 'ok', 7000);
+    });
+
+    /** Isi narasi yang masih kosong untuk semua siswa yang Understanding Level-nya sudah ada. */
+    function draftAllDialog() {
+      const targets = [];
+      let noPredicate = 0;
+      for (const r of rows) {
+        if (r.tr.hidden) continue;
+        const p = r.getActiveProject();
+        if (!p || p.narrative.trim()) continue;
+        if (localGrade(p.understanding, settings.grading).code) targets.push(r); else noPredicate++;
+      }
+      if (!targets.length) {
+        toast(noPredicate
+          ? `Tidak ada yang bisa dibuatkan draf: ${noPredicate} siswa belum diisi Understanding Level-nya`
+          : 'Semua narasi proyek di tabel ini sudah terisi', 'error', 6000);
+        return;
+      }
+      openModal({
+        title: 'Draf narasi otomatis',
+        body: h('div', { class: 'stack' },
+          h('p', {}, `Buat draf narasi untuk ${targets.length} siswa yang narasinya masih kosong. Draf disusun dari bank kalimat sesuai Understanding Level masing-masing (nama, he/she, dan tema proyek otomatis).`),
+          noPredicate ? h('p', { class: 'note warn small' }, `${noPredicate} siswa dilewati karena Understanding Level-nya belum diisi.`) : null,
+          h('p', { class: 'note small' }, 'Narasi yang sudah ada tidak diubah. Draf tetap perlu dibaca dan disesuaikan guru sebelum dicetak.')),
+        actions: [
+          { label: 'Batal', kind: 'quiet', onClick: (c) => c() },
+          { label: `Buat ${targets.length} draf`, kind: 'primary', onClick: (close) => {
+            for (const r of targets) {
+              const p = r.getActiveProject();
+              p.narrative = makeDraft(r.view.student, p);
+              r.refreshProjUI();
+              r.changed();
+            }
+            close();
+            toast(`${targets.length} draf narasi dibuat. Klik tombol narasi di tiap baris untuk membaca & menyunting.`, 'ok', 7000);
+          } },
+        ],
+      });
+    }
+
     content.append(subbar, sheet);
+    if (onlyIncomplete) setOnlyIncomplete(true);
     return sheet;
   }
 
@@ -823,7 +1039,7 @@ export function projectLabel(p) {
 async function previewModal(id, name) {
   let html;
   try { html = await api.renderReport([id]); } catch (e) { toast(errorText(e), 'error'); return; }
-  const frame = h('iframe', { class: 'desk', style: { height: '68vh' }, title: `Pratinjau rapor ${name}` });
+  const frame = h('iframe', { class: 'desk', style: { height: '68vh' }, title: `Pratinjau rapor ${name}`, sandbox: 'allow-same-origin allow-modals' });
   fitPreview(frame);
   frame.srcdoc = html;
   openModal({

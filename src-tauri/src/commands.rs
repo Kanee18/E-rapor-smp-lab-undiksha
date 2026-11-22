@@ -29,16 +29,26 @@ pub struct AppState {
     store: Mutex<Store>,
     warning: Mutex<Option<String>>,
     security: Mutex<Security>,
+    /// Folder data utama (berisi data SMP, folder SD\ & SMA\, keamanan.json, jenjang.json).
+    root: PathBuf,
+    /// Jenjang yang sedang dibuka ("SD", "SMP", "SMA").
+    level: Mutex<String>,
 }
 
 impl AppState {
-    pub fn new(store: Store, warning: Option<String>, security: Security) -> Self {
+    pub fn new(store: Store, warning: Option<String>, security: Security, root: PathBuf, level: String) -> Self {
         Self {
             store: Mutex::new(store),
             warning: Mutex::new(warning),
             security: Mutex::new(security),
+            root,
+            level: Mutex::new(level),
         }
     }
+}
+
+fn current_level(state: &State<'_, AppState>) -> String {
+    state.level.lock().map(|l| l.clone()).unwrap_or_else(|_| crate::levels::DEFAULT_LEVEL.to_string())
 }
 
 fn security<'a>(state: &'a State<'_, AppState>) -> Result<MutexGuard<'a, Security>, String> {
@@ -63,11 +73,7 @@ fn lock<'a>(state: &'a State<'_, AppState>) -> Result<MutexGuard<'a, Store>, Str
 
 fn sorted_students(data: &AppData) -> Vec<&Student> {
     let mut v: Vec<&Student> = data.students.iter().collect();
-    v.sort_by(|a, b| {
-        class_sort_key(&a.class_name)
-            .cmp(&class_sort_key(&b.class_name))
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
+    v.sort_by(|a, b| crate::model::compare_students(a, b));
     v
 }
 
@@ -84,6 +90,7 @@ fn find_student<'a>(data: &'a mut AppData, id: &str) -> Result<&'a mut Student, 
 pub struct DataResponse {
     data: AppData,
     data_dir: String,
+    level: String,
     warning: Option<String>,
     custom_template: bool,
 }
@@ -95,6 +102,7 @@ pub fn get_data(state: State<'_, AppState>) -> Result<DataResponse, String> {
     Ok(DataResponse {
         data: store.data.clone(),
         data_dir: store.dir.display().to_string(),
+        level: current_level(&state),
         warning,
         custom_template: store.custom_template_path().exists(),
     })
@@ -223,7 +231,11 @@ pub fn save_student_identity(state: State<'_, AppState>, student: StudentIdentit
             id
         }
     };
+    let next = crate::model::next_order(&data.students, &class_name);
     let s = find_student(data, &id)?;
+    if s.order.is_none() || s.class_name != class_name {
+        s.order = Some(next);
+    }
     s.name = name;
     s.class_name = class_name;
     s.nis = student.nis.trim().to_string();
@@ -438,6 +450,35 @@ pub async fn import_students(
     classes: Vec<String>,
 ) -> Result<StudentImportReport, String> {
     let rows = read_students(&PathBuf::from(path), &sheet)?;
+    let mut store = lock(&state)?;
+    let report = apply_students(&mut store.data, rows, &classes);
+    store.save()?;
+    Ok(report)
+}
+
+/// Impor data siswa berformat bebas: tebak kolom/kelas dan kembalikan pratinjau.
+/// `mapping` kosong = tebak otomatis; diisi = pakai pilihan pengguna.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn inspect_student_sheet(
+    state: State<'_, AppState>,
+    path: String,
+    sheet: String,
+    mapping: Option<crate::student_flex::StudentMapping>,
+) -> Result<crate::student_flex::FlexPreview, String> {
+    ensure_unlocked(&state)?;
+    crate::student_flex::inspect(&PathBuf::from(path), &sheet, mapping)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn import_students_mapped(
+    state: State<'_, AppState>,
+    path: String,
+    sheet: String,
+    mapping: crate::student_flex::StudentMapping,
+    classes: Vec<String>,
+) -> Result<StudentImportReport, String> {
+    ensure_unlocked(&state)?;
+    let rows = crate::student_flex::read_mapped(&PathBuf::from(path), &sheet, &mapping)?;
     let mut store = lock(&state)?;
     let report = apply_students(&mut store.data, rows, &classes);
     store.save()?;
@@ -900,4 +941,125 @@ pub fn security_lock(state: State<'_, AppState>) -> Result<SecurityStatus, Strin
     let mut sec = security(&state)?;
     sec.lock();
     Ok(sec.status())
+}
+
+// ---------------------------------------------------------------- jenjang (SD / SMP / SMA)
+
+#[derive(Serialize)]
+pub struct LevelInfo {
+    id: String,
+    label: String,
+    school: String,
+    active: bool,
+    /// Sudah pernah dibuka (punya data.json).
+    exists: bool,
+    students: usize,
+    classes: Vec<String>,
+}
+
+fn class_list(data: &AppData) -> Vec<String> {
+    let mut c: Vec<String> = data.students.iter().map(|s| s.class_name.clone()).collect();
+    c.sort_by_key(|x| class_sort_key(x));
+    c.dedup();
+    c
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_levels(state: State<'_, AppState>) -> Result<Vec<LevelInfo>, String> {
+    let store = lock(&state)?;
+    let active = current_level(&state);
+    Ok(crate::levels::LEVELS
+        .iter()
+        .map(|l| {
+            let is_active = l.id == active;
+            let path = crate::levels::level_dir(&state.root, l.id).join("data.json");
+            let other = if is_active { None } else { crate::store::read_data_file(&path).ok() };
+            let data = if is_active { Some(&store.data) } else { other.as_ref() };
+            LevelInfo {
+                id: l.id.into(),
+                label: l.label.into(),
+                school: data
+                    .map(|d| d.settings.school_name.clone())
+                    .filter(|n| !n.trim().is_empty())
+                    .unwrap_or_else(|| l.school.into()),
+                active: is_active,
+                exists: is_active || path.exists(),
+                students: data.map(|d| d.students.len()).unwrap_or(0),
+                classes: data.map(class_list).unwrap_or_default(),
+            }
+        })
+        .collect())
+}
+
+/// Buka data jenjang lain. Jenjang yang belum pernah dibuka dibuat baru; `copy_settings` = salin
+/// pengaturan (mapel, ATL, proyek, predikat, bank kalimat, kop) dari jenjang yang sedang dibuka.
+#[tauri::command(rename_all = "snake_case")]
+pub fn switch_level(state: State<'_, AppState>, id: String, copy_settings: bool) -> Result<(), String> {
+    let level = crate::levels::find(&id).ok_or("Jenjang tidak dikenal")?;
+    let mut store = lock(&state)?;
+    if current_level(&state) == level.id {
+        return Ok(());
+    }
+    let dir = crate::levels::level_dir(&state.root, level.id);
+    let is_new = !dir.join("data.json").exists();
+    let (mut next, warning) = Store::open(dir)?;
+    if is_new {
+        next.data.settings.school_name = level.school.into();
+        if copy_settings {
+            crate::levels::copy_shared_settings(&store.data.settings, &mut next.data.settings);
+        }
+    }
+    if is_new || next.data.meta.level.is_empty() {
+        next.data.meta.level = level.id.into();
+        next.save()?;
+    }
+    crate::levels::write_active(&state.root, level.id)?;
+    *store = next;
+    if let Ok(mut l) = state.level.lock() {
+        *l = level.id.into();
+    }
+    if let (Some(w), Ok(mut slot)) = (warning, state.warning.lock()) {
+        *slot = Some(w);
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+pub struct MoveClassesResult {
+    report: crate::levels::MoveReport,
+    target: String,
+    backup: String,
+}
+
+/// Pindahkan kelas (siswa + nilai + isian + wali kelas) dari jenjang yang dibuka ke jenjang lain.
+/// Kedua data dibackup dulu; data tujuan disimpan lebih dulu supaya tidak ada yang hilang kalau gagal.
+#[tauri::command(rename_all = "snake_case")]
+pub fn move_classes_to_level(
+    state: State<'_, AppState>,
+    classes: Vec<String>,
+    target: String,
+) -> Result<MoveClassesResult, String> {
+    let level = crate::levels::find(&target).ok_or("Jenjang tujuan tidak dikenal")?;
+    let mut store = lock(&state)?;
+    if current_level(&state) == level.id {
+        return Err("Jenjang tujuan sama dengan jenjang yang sedang dibuka".into());
+    }
+    if classes.is_empty() {
+        return Err("Pilih minimal satu kelas".into());
+    }
+    let dir = crate::levels::level_dir(&state.root, level.id);
+    let is_new = !dir.join("data.json").exists();
+    let (mut dst, _) = Store::open(dir)?;
+    if is_new {
+        dst.data.settings.school_name = level.school.into();
+        crate::levels::copy_shared_settings(&store.data.settings, &mut dst.data.settings);
+    } else {
+        dst.copy_to_backup("sebelum-terima-kelas")?;
+    }
+    dst.data.meta.level = level.id.into();
+    let backup = store.copy_to_backup("sebelum-pindah-kelas")?.display().to_string();
+    let report = crate::levels::move_classes(&mut store.data, &mut dst.data, &classes);
+    dst.save()?;
+    store.save()?;
+    Ok(MoveClassesResult { report, target: level.label.into(), backup })
 }

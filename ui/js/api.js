@@ -5,6 +5,9 @@ const invoke = (cmd, args) => window.__TAURI__.core.invoke(cmd, args);
 
 export const api = {
   getData: () => invoke('get_data'),
+  listLevels: () => invoke('list_levels'),
+  switchLevel: (id, copySettings) => invoke('switch_level', { id, copy_settings: copySettings }),
+  moveClassesToLevel: (classes, target) => invoke('move_classes_to_level', { classes, target }),
   saveSettings: (settings) => invoke('save_settings', { settings }),
 
   studentViews: (className = null) => invoke('student_views', { class_name: className }),
@@ -20,6 +23,8 @@ export const api = {
   pickExcelFile: () => invoke('pick_excel_file'),
   scanExcel: (path) => invoke('scan_excel', { path }),
   importStudents: (path, sheet, classes) => invoke('import_students', { path, sheet, classes }),
+  inspectStudentSheet: (path, sheet, mapping = null) => invoke('inspect_student_sheet', { path, sheet, mapping }),
+  importStudentsMapped: (path, sheet, mapping, classes) => invoke('import_students_mapped', { path, sheet, mapping, classes }),
   importScores: (path, sheet, classes) => invoke('import_scores', { path, sheet, classes }),
   importAttendance: (path, sheet, classes, effectiveDays, emptyAsZero) =>
     invoke('import_attendance', { path, sheet, classes, effective_days: effectiveDays, empty_as_zero: emptyAsZero }),

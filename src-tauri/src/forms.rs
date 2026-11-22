@@ -51,6 +51,10 @@ pub struct FormRequest {
     pub include_attendance: bool,
     /// Total hari efektif sekolah untuk rumus kehadiran (S/I/A → % Present).
     pub effective_days: Option<u32>,
+    /// Sertakan salinan LENGKAP data siswa (nilai semua mapel, NISN, semua isian) di sheet
+    /// tersembunyi, untuk memindahkan data ke aplikasi E-Raport guru lain. Default mati:
+    /// form untuk fasilitator cukup berisi kolom yang perlu mereka isi.
+    pub include_snapshot: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -62,6 +66,10 @@ enum Key {
     Understanding,
     Inquiry,
     Narrative,
+    SlotProject(usize),
+    SlotUnderstanding(usize),
+    SlotInquiry(usize),
+    SlotNarrative(usize),
     Sick,
     Permit,
     Alpha,
@@ -78,6 +86,10 @@ impl Key {
             Key::Understanding => "uoi:understanding".into(),
             Key::Inquiry => "uoi:inquiry".into(),
             Key::Narrative => "uoi:narrative".into(),
+            Key::SlotProject(i) => format!("uoi:slot:{i}:project"),
+            Key::SlotUnderstanding(i) => format!("uoi:slot:{i}:understanding"),
+            Key::SlotInquiry(i) => format!("uoi:slot:{i}:inquiry"),
+            Key::SlotNarrative(i) => format!("uoi:slot:{i}:narrative"),
             Key::Sick => "attendance:s".into(),
             Key::Permit => "attendance:i".into(),
             Key::Alpha => "attendance:a".into(),
@@ -86,7 +98,19 @@ impl Key {
     }
 
     fn parse(s: &str) -> Option<Key> {
-        Some(match s.trim() {
+        let t = s.trim();
+        if let Some(rest) = t.strip_prefix("uoi:slot:") {
+            let (idx_str, kind) = rest.split_once(':')?;
+            let idx: usize = idx_str.parse().ok()?;
+            return match kind {
+                "project" => Some(Key::SlotProject(idx)),
+                "understanding" => Some(Key::SlotUnderstanding(idx)),
+                "inquiry" => Some(Key::SlotInquiry(idx)),
+                "narrative" => Some(Key::SlotNarrative(idx)),
+                _ => None,
+            };
+        }
+        Some(match t {
             "id" => Key::Id,
             "class" => Key::Class,
             "name" => Key::Name,
@@ -124,6 +148,34 @@ fn project_label(data: &AppData, project_id: &str) -> Option<String> {
     })
 }
 
+fn is_all_projects(pid: &str) -> bool {
+    matches!(pid.trim(), "*" | "all" | "ALL")
+}
+
+fn resolve_project_id(projects: &[ProjectConfig], raw: &str) -> Option<String> {
+    let t = raw.trim();
+    if t.is_empty() {
+        return None;
+    }
+    if let Some(p) = projects.iter().find(|p| p.id.eq_ignore_ascii_case(t)) {
+        return Some(p.id.clone());
+    }
+    let before_dash = t.split(['—', '-']).next().unwrap_or(t).trim();
+    if let Some(p) = projects.iter().find(|p| {
+        let lbl = if p.theme.trim().is_empty() {
+            p.name.clone()
+        } else {
+            format!("{} — {}", p.name, p.theme.trim())
+        };
+        p.name.trim().eq_ignore_ascii_case(t)
+            || (!before_dash.is_empty() && p.name.trim().eq_ignore_ascii_case(before_dash))
+            || lbl.eq_ignore_ascii_case(t)
+    }) {
+        return Some(p.id.clone());
+    }
+    None
+}
+
 /// Siswa yang masuk form, urut kelas lalu nama.
 pub fn selected_students<'a>(data: &'a AppData, req: &FormRequest) -> Vec<&'a Student> {
     let classes: Vec<String> = req.classes.iter().map(|c| normalize_class(c)).collect();
@@ -132,21 +184,19 @@ pub fn selected_students<'a>(data: &'a AppData, req: &FormRequest) -> Vec<&'a St
         .iter()
         .filter(|s| classes.contains(&s.class_name))
         .filter(|s| match (&req.project_id, req.only_project_members) {
-            (Some(pid), true) => s.projects.iter().any(|p| &p.project_id == pid),
+            (Some(pid), true) if !is_all_projects(pid) => s.projects.iter().any(|p| &p.project_id == pid),
+            (Some(_), true) => !s.projects.is_empty(),
             _ => true,
         })
         .collect();
-    list.sort_by(|a, b| {
-        class_sort_key(&a.class_name)
-            .cmp(&class_sort_key(&b.class_name))
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
+    list.sort_by(|a, b| crate::model::compare_students(a, b));
     list
 }
 
 /// Nama file usulan, mis. "Form Project 1 - IX-1, IX-2.xlsx".
 pub fn suggested_file_name(data: &AppData, req: &FormRequest) -> String {
     let what = match &req.project_id {
+        Some(pid) if is_all_projects(pid) => "Rapor".into(),
         Some(pid) => data
             .settings
             .projects
@@ -171,8 +221,9 @@ fn xerr(e: rust_xlsxwriter::XlsxError) -> String {
 pub fn build_form(data: &AppData, req: &FormRequest) -> Result<(Workbook, usize), String> {
     let st = &data.settings;
     let project_id = req.project_id.clone().filter(|p| !p.trim().is_empty());
+    let all_projects_mode = project_id.as_deref().is_some_and(is_all_projects);
     if let Some(pid) = &project_id {
-        if project_label(data, pid).is_none() {
+        if !all_projects_mode && project_label(data, pid).is_none() {
             return Err("Proyek yang dipilih tidak ada di Pengaturan".into());
         }
     }
@@ -183,6 +234,12 @@ pub fn build_form(data: &AppData, req: &FormRequest) -> Result<(Workbook, usize)
     if students.is_empty() {
         return Err("Tidak ada siswa untuk kelas/proyek yang dipilih".into());
     }
+
+    let num_project_slots = if all_projects_mode {
+        students.iter().map(|s| s.projects.len()).max().unwrap_or(1).max(1)
+    } else {
+        0
+    };
 
     // kolom
     let mut cols: Vec<(Key, String, f64)> = vec![
@@ -195,7 +252,16 @@ pub fn build_form(data: &AppData, req: &FormRequest) -> Result<(Workbook, usize)
             cols.push((Key::Atl(a.id.clone()), a.name.clone(), 13.0));
         }
     }
-    if project_id.is_some() {
+    if all_projects_mode {
+        for slot in 0..num_project_slots {
+            let pfx = if num_project_slots > 1 { format!("Proyek {} — ", slot + 1) } else { String::new() };
+            let p_lbl = if num_project_slots > 1 { format!("Proyek {}", slot + 1) } else { "Proyek".into() };
+            cols.push((Key::SlotProject(slot), p_lbl, 22.0));
+            cols.push((Key::SlotUnderstanding(slot), format!("{pfx}Understanding Level"), 14.0));
+            cols.push((Key::SlotInquiry(slot), format!("{pfx}Inquiry & Research Skills"), 14.0));
+            cols.push((Key::SlotNarrative(slot), format!("{pfx}Teacher Narrative Feedback (English)"), 56.0));
+        }
+    } else if project_id.is_some() {
         cols.push((Key::Understanding, "Understanding Level".into(), 14.0));
         cols.push((Key::Inquiry, "Inquiry & Research Skills".into(), 14.0));
         cols.push((Key::Narrative, "Teacher Narrative Feedback (English)".into(), 64.0));
@@ -243,8 +309,8 @@ pub fn build_form(data: &AppData, req: &FormRequest) -> Result<(Workbook, usize)
     let mut sheet = Worksheet::new();
     sheet.set_name(DATA_SHEET).map_err(xerr)?;
     let heading = match &project_id {
-        Some(pid) => format!("Form isian rapor — {}", project_label(data, pid).unwrap_or_default()),
-        None => "Form isian rapor".to_string(),
+        Some(pid) if !is_all_projects(pid) => format!("Form isian rapor — {}", project_label(data, pid).unwrap_or_default()),
+        _ => "Form isian rapor".to_string(),
     };
     let mut classes: Vec<String> = students.iter().map(|s| s.class_name.clone()).collect();
     classes.dedup();
@@ -280,7 +346,10 @@ pub fn build_form(data: &AppData, req: &FormRequest) -> Result<(Workbook, usize)
     let project_entry = |s: &Student| -> Option<ProjectEntry> {
         project_id.as_ref().and_then(|pid| s.projects.iter().find(|p| &p.project_id == pid).cloned())
     };
-    let has_narrative = cols.iter().any(|(k, _, _)| *k == Key::Narrative);
+    let slot_entry = |s: &Student, slot: usize| -> Option<ProjectEntry> { s.projects.get(slot).cloned() };
+    let has_narrative = cols
+        .iter()
+        .any(|(k, _, _)| matches!(k, Key::Narrative | Key::SlotNarrative(_)));
     for (i, s) in students.iter().enumerate() {
         let r = HEADER_ROW + 1 + i as u32;
         let pe = project_entry(s).unwrap_or_default();
@@ -330,6 +399,27 @@ pub fn build_form(data: &AppData, req: &FormRequest) -> Result<(Workbook, usize)
                 Key::Understanding => (pe.understanding.clone(), &input_center, true),
                 Key::Inquiry => (pe.inquiry.clone(), &input_center, true),
                 Key::Narrative => (pe.narrative.clone(), &input_wrap, false),
+                Key::SlotProject(slot) => {
+                    let label = slot_entry(s, *slot)
+                        .map(|p| project_label(data, &p.project_id).unwrap_or(p.project_id))
+                        .unwrap_or_default();
+                    (label, &input, false)
+                }
+                Key::SlotUnderstanding(slot) => (
+                    slot_entry(s, *slot).map(|p| p.understanding).unwrap_or_default(),
+                    &input_center,
+                    true,
+                ),
+                Key::SlotInquiry(slot) => (
+                    slot_entry(s, *slot).map(|p| p.inquiry).unwrap_or_default(),
+                    &input_center,
+                    true,
+                ),
+                Key::SlotNarrative(slot) => (
+                    slot_entry(s, *slot).map(|p| p.narrative).unwrap_or_default(),
+                    &input_wrap,
+                    false,
+                ),
                 Key::Sick | Key::Permit | Key::Alpha | Key::Attendance => unreachable!(),
             };
             // Penilaian: kode ditulis huruf besar, angka ditulis sebagai angka
@@ -359,7 +449,10 @@ pub fn build_form(data: &AppData, req: &FormRequest) -> Result<(Workbook, usize)
         .set_error_message(format!("Isi {} atau angka 0–100. Klik Yes kalau isiannya angka.", codes.join(" / ")))
         .map_err(xerr)?;
     for (c, (key, _, _)) in cols.iter().enumerate() {
-        if matches!(key, Key::Atl(_) | Key::Understanding | Key::Inquiry) {
+        if matches!(
+            key,
+            Key::Atl(_) | Key::Understanding | Key::Inquiry | Key::SlotUnderstanding(_) | Key::SlotInquiry(_)
+        ) {
             sheet
                 .add_data_validation(HEADER_ROW + 1, c as u16, last_row, c as u16, &validation)
                 .map_err(xerr)?;
@@ -423,9 +516,11 @@ pub fn build_form(data: &AppData, req: &FormRequest) -> Result<(Workbook, usize)
     for (c, (key, _, _)) in cols.iter().enumerate() {
         meta.write_string(KEYS_ROW, c as u16, key.as_str()).map_err(xerr)?;
     }
-    // Simpan juga konfigurasi proyek, kelas, dan snapshot data lengkap tiap siswa
+    // Kalau diminta: simpan juga konfigurasi proyek, kelas, dan salinan data lengkap tiap siswa
     // supaya saat file form ini dibuka ("Impor form") di aplikasi E-Raport guru lain,
     // daftar siswa beserta nilai dan isian yang sudah dibuat guru pertama ikut terbawa.
+    // Sheet tersembunyi mudah dimunculkan di Excel, jadi ini TIDAK untuk form fasilitator.
+    if req.include_snapshot {
     if let Ok(proj_json) = serde_json::to_string(&st.projects) {
         meta.write_string(5, 0, "projects_config").map_err(xerr)?;
         meta.write_string(5, 1, &proj_json).map_err(xerr)?;
@@ -455,6 +550,7 @@ pub fn build_form(data: &AppData, req: &FormRequest) -> Result<(Workbook, usize)
             meta.write_string(row, 2, &s_json).map_err(xerr)?;
         }
     }
+    }
     meta.set_hidden(true);
 
     let mut wb = Workbook::new();
@@ -481,6 +577,8 @@ pub struct FormImportReport {
     pub students: usize,
     /// Siswa baru yang belum ada di aplikasi ini dan otomatis ditambahkan dari form.
     pub students_added: usize,
+    /// Nama siswa baru tersebut (ditampilkan di pratinjau supaya bisa dicek sebelum Terapkan).
+    pub added_names: Vec<String>,
     /// Isian yang dimasukkan (termasuk yang sama dengan sebelumnya).
     pub values_set: usize,
     /// Isian yang berbeda dengan yang sudah ada di aplikasi.
@@ -627,9 +725,19 @@ pub fn import_form(data: &mut AppData, path: &Path) -> Result<FormImportReport, 
     let form_has_att = keys
         .iter()
         .any(|k| matches!(k, Some(Key::Attendance | Key::Sick | Key::Permit | Key::Alpha)));
+    let form_has_slots = keys.iter().any(|k| {
+        matches!(
+            k,
+            Some(Key::SlotProject(_) | Key::SlotUnderstanding(_) | Key::SlotInquiry(_) | Key::SlotNarrative(_))
+        )
+    });
 
     let mut rep = FormImportReport::default();
     let project_ok = match &project_id {
+        Some(pid) if is_all_projects(pid) => {
+            rep.project = Some("Semua proyek siswa".into());
+            true
+        }
         Some(pid) => {
             rep.project = project_label(data, pid);
             if rep.project.is_none() {
@@ -672,6 +780,10 @@ pub fn import_form(data: &mut AppData, path: &Path) -> Result<FormImportReport, 
 
         let idx = match existing_idx {
             Some(i) => i,
+            None if snap.is_none() => {
+                rep.unknown_rows.push(if name.trim().is_empty() { format!("ID {id}") } else { name.trim().to_string() });
+                continue;
+            }
             None => {
                 let resolved_name = if !name.trim().is_empty() {
                     name.trim().to_string()
@@ -695,16 +807,23 @@ pub fn import_form(data: &mut AppData, path: &Path) -> Result<FormImportReport, 
                     snap.as_ref().map(|sn| sn.nis.trim().to_string()).unwrap_or_default()
                 };
                 let new_id = new_student_id(data, &preferred_id);
+                let order = snap.as_ref().and_then(|sn| sn.order).or(Some(crate::model::next_order(&data.students, &resolved_class)));
                 data.students.push(Student {
                     id: new_id,
+                    order,
                     nis: snap.as_ref().map(|sn| sn.nis.clone()).unwrap_or_default(),
                     nisn: snap.as_ref().map(|sn| sn.nisn.clone()).unwrap_or_default(),
                     name: resolved_name,
                     gender: snap.as_ref().map(|sn| sn.gender.clone()).unwrap_or_default(),
-                    class_name: resolved_class,
+                    class_name: resolved_class.clone(),
                     ..Default::default()
                 });
                 rep.students_added += 1;
+                rep.added_names.push(if resolved_class.is_empty() {
+                    data.students[data.students.len() - 1].name.clone()
+                } else {
+                    format!("{} ({resolved_class})", data.students[data.students.len() - 1].name)
+                });
                 rep.changed += 1;
                 data.students.len() - 1
             }
@@ -733,85 +852,112 @@ pub fn import_form(data: &mut AppData, path: &Path) -> Result<FormImportReport, 
             }
         };
 
+        // Isi dari salinan data: hanya untuk kolom yang MASIH KOSONG di aplikasi ini.
+        // Salinan dibuat saat form disimpan, jadi bisa lebih lama dari data sekarang; menimpa
+        // data yang sudah ada akan diam-diam membatalkan koreksi yang dibuat setelahnya.
+        let fill = |rep: &mut FormImportReport, slot: &mut String, value: &str| {
+            let v = value.trim();
+            if slot.trim().is_empty() && !v.is_empty() {
+                rep.values_set += 1;
+                rep.changed += 1;
+                *slot = v.to_string();
+            }
+        };
+
         // Gabungkan data tambahan dari snapshot guru pembuat form (identitas, nilai mapel,
         // catatan indikator khusus, proyek lain, atau ATL/kehadiran yang tidak ditampilkan sebagai kolom form).
-        if let Some(sn) = snap {
+        if let Some(ref sn) = snap {
             if student.nis.is_empty() && !sn.nis.is_empty() {
-                student.nis = sn.nis;
+                student.nis = sn.nis.clone();
             }
             if student.nisn.is_empty() && !sn.nisn.is_empty() {
-                student.nisn = sn.nisn;
+                student.nisn = sn.nisn.clone();
             }
             if student.gender.is_empty() && !sn.gender.is_empty() {
-                student.gender = sn.gender;
+                student.gender = sn.gender.clone();
             }
             if student.class_name.is_empty() && !sn.class_name.is_empty() {
                 student.class_name = normalize_class(&sn.class_name);
             }
-            for (k, sc) in sn.scores {
-                let cur = student.scores.entry(k).or_default();
+            for (k, sc) in &sn.scores {
+                let cur = student.scores.entry(k.clone()).or_default();
                 for (src_val, dst_slot) in [(sc.ph, &mut cur.ph), (sc.pts, &mut cur.pts), (sc.manual, &mut cur.manual)] {
-                    if let Some(v) = src_val {
+                    if let (Some(v), None) = (src_val, *dst_slot) {
                         rep.values_set += 1;
-                        if *dst_slot != Some(v) {
-                            *dst_slot = Some(v);
-                            rep.changed += 1;
-                        }
+                        rep.changed += 1;
+                        *dst_slot = Some(v);
                     }
                 }
             }
-            for (k, note) in sn.subject_notes {
+            for (k, note) in &sn.subject_notes {
                 if !note.trim().is_empty() {
-                    let slot = student.subject_notes.entry(k).or_default();
-                    set_text(&mut rep, "Indikator mapel", slot, note.trim().to_string(), false);
+                    let slot = student.subject_notes.entry(k.clone()).or_default();
+                    fill(&mut rep, slot, note);
                 }
             }
-            for (aid, r_entry) in sn.atl {
-                let Some((_, label)) = atl_names.iter().find(|(id, _)| id == &aid) else { continue };
+            for (aid, r_entry) in &sn.atl {
+                let Some((_, label)) = atl_names.iter().find(|(id, _)| id == aid) else { continue };
+                let _ = label;
                 if !r_entry.indicator.trim().is_empty() {
                     let entry = student.atl.entry(aid.clone()).or_default();
-                    set_text(&mut rep, &format!("Indikator {label}"), &mut entry.indicator, r_entry.indicator.trim().to_string(), false);
+                    fill(&mut rep, &mut entry.indicator, &r_entry.indicator);
                 }
                 if !form_has_atl && !r_entry.grade.trim().is_empty() {
-                    let entry = student.atl.entry(aid).or_default();
-                    set_text(&mut rep, label, &mut entry.grade, normalize_grade(&r_entry.grade, &grading), true);
+                    let entry = student.atl.entry(aid.clone()).or_default();
+                    fill(&mut rep, &mut entry.grade, &normalize_grade(&r_entry.grade, &grading));
                 }
             }
-            for pe in sn.projects {
-                if project_id.as_deref() == Some(pe.project_id.as_str()) {
-                    continue; // proyek utama form ini dibaca langsung dari sel sheet Isian di bawah
-                }
-                if pe.understanding.trim().is_empty() && pe.inquiry.trim().is_empty() && pe.narrative.trim().is_empty() {
+            for pe in &sn.projects {
+                if pe.project_id.trim().is_empty() {
                     continue;
                 }
+                // Pastikan proyek ini terdaftar di Pengaturan supaya tidak hilang di tampilan.
+                if !data.settings.projects.iter().any(|p| p.id == pe.project_id) {
+                    data.settings.projects.push(ProjectConfig {
+                        id: pe.project_id.clone(),
+                        name: pe.project_id.clone(),
+                        ..Default::default()
+                    });
+                }
+                // Kalau proyek ini dikelola lewat kolom sheet Isian (dan di sheet Isian ada isinya),
+                // biarkan pembacaan sheet Isian di bawah yang memasukkannya supaya tidak dihitung dua kali.
+                // Tapi semua proyek lain milik siswa (atau proyek yang sudah dipasangkan ke siswa) WAJIB ikut diimpor.
+                let covered_by_legacy_sheet = !form_has_slots && project_id.as_deref() == Some(pe.project_id.as_str());
                 let pos = match student.projects.iter().position(|p| p.project_id == pe.project_id) {
                     Some(p) => p,
                     None => {
                         student.projects.push(ProjectEntry { project_id: pe.project_id.clone(), ..Default::default() });
                         rep.projects_added += 1;
+                        if pe.understanding.trim().is_empty()
+                            && pe.inquiry.trim().is_empty()
+                            && pe.narrative.trim().is_empty()
+                        {
+                            rep.changed += 1;
+                        }
                         student.projects.len() - 1
                     }
                 };
+                if covered_by_legacy_sheet || form_has_slots {
+                    continue;
+                }
                 let dst = &mut student.projects[pos];
                 if !pe.understanding.trim().is_empty() {
-                    set_text(&mut rep, "Understanding Level", &mut dst.understanding, normalize_grade(&pe.understanding, &grading), true);
+                    fill(&mut rep, &mut dst.understanding, &normalize_grade(&pe.understanding, &grading));
                 }
                 if !pe.inquiry.trim().is_empty() {
-                    set_text(&mut rep, "Inquiry & Research Skills", &mut dst.inquiry, normalize_grade(&pe.inquiry, &grading), true);
+                    fill(&mut rep, &mut dst.inquiry, &normalize_grade(&pe.inquiry, &grading));
                 }
-                if !pe.narrative.trim().is_empty() {
-                    set_text(&mut rep, "Narasi", &mut dst.narrative, pe.narrative.trim().to_string(), false);
-                }
+                fill(&mut rep, &mut dst.narrative, &pe.narrative);
             }
-            if !form_has_att {
-                if sn.attendance_s.is_some() || sn.attendance_i.is_some() || sn.attendance_a.is_some() {
+            if !form_has_att && student.attendance.trim().is_empty() {
+                let sn_has_sia = sn.attendance_s.is_some() || sn.attendance_i.is_some() || sn.attendance_a.is_some();
+                let st_has_sia = student.attendance_s.is_some() || student.attendance_i.is_some() || student.attendance_a.is_some();
+                if sn_has_sia && !st_has_sia {
                     student.attendance_s = sn.attendance_s;
                     student.attendance_i = sn.attendance_i;
                     student.attendance_a = sn.attendance_a;
                 }
-                if !sn.attendance.trim().is_empty() {
-                    set_text(&mut rep, "Kehadiran", &mut student.attendance, sn.attendance.trim().to_string(), false);
-                }
+                fill(&mut rep, &mut student.attendance, &sn.attendance);
             }
         }
 
@@ -860,6 +1006,90 @@ pub fn import_form(data: &mut AppData, path: &Path) -> Result<FormImportReport, 
             }
         }
 
+        // Baca slot multi-proyek (Proyek 1, Proyek 2, ...) kalau form memakai mode Semua Proyek.
+        if form_has_slots {
+            let max_slot = keys
+                .iter()
+                .filter_map(|k| match k {
+                    Some(
+                        Key::SlotProject(i)
+                        | Key::SlotUnderstanding(i)
+                        | Key::SlotInquiry(i)
+                        | Key::SlotNarrative(i),
+                    ) => Some(*i),
+                    _ => None,
+                })
+                .max()
+                .unwrap_or(0);
+            for slot in 0..=max_slot {
+                let p_raw = col_of(&Key::SlotProject(slot)).map(|c| at(&sheet, r, c)).unwrap_or_default();
+                let u_raw = col_of(&Key::SlotUnderstanding(slot)).map(|c| at(&sheet, r, c)).unwrap_or_default();
+                let i_raw = col_of(&Key::SlotInquiry(slot)).map(|c| at(&sheet, r, c)).unwrap_or_default();
+                let n_raw = col_of(&Key::SlotNarrative(slot)).map(|c| at(&sheet, r, c)).unwrap_or_default();
+                let snap_pe = snap.as_ref().and_then(|sn| sn.projects.get(slot));
+                if p_raw.trim().is_empty()
+                    && u_raw.trim().is_empty()
+                    && i_raw.trim().is_empty()
+                    && n_raw.trim().is_empty()
+                    && snap_pe.is_none()
+                {
+                    continue;
+                }
+                let pid = resolve_project_id(&data.settings.projects, &p_raw)
+                    .or_else(|| snap_pe.map(|pe| pe.project_id.clone()).filter(|id| !id.is_empty()))
+                    .or_else(|| {
+                        let t = p_raw.trim();
+                        if !t.is_empty() {
+                            let new_id = format!("p{}", data.settings.projects.len() + 1);
+                            data.settings.projects.push(ProjectConfig {
+                                id: new_id.clone(),
+                                name: t.to_string(),
+                                ..Default::default()
+                            });
+                            Some(new_id)
+                        } else {
+                            data.settings.projects.first().map(|p| p.id.clone())
+                        }
+                    });
+                let Some(pid) = pid else { continue };
+                let pos = match student.projects.iter().position(|p| p.project_id == pid) {
+                    Some(p) => p,
+                    None => {
+                        student.projects.push(ProjectEntry { project_id: pid.clone(), ..Default::default() });
+                        rep.projects_added += 1;
+                        student.projects.len() - 1
+                    }
+                };
+                // Sel form yang kosong: pakai salinan hanya kalau di aplikasi juga masih kosong.
+                let cur = &student.projects[pos];
+                let from_snap = |cell: String, current: &str, snap_val: Option<String>| {
+                    if !cell.trim().is_empty() || !current.trim().is_empty() { cell } else { snap_val.unwrap_or_default() }
+                };
+                let u_eff = from_snap(u_raw, &cur.understanding, snap_pe.map(|pe| pe.understanding.clone()));
+                let i_eff = from_snap(i_raw, &cur.inquiry, snap_pe.map(|pe| pe.inquiry.clone()));
+                let n_eff = from_snap(n_raw, &cur.narrative, snap_pe.map(|pe| pe.narrative.clone()));
+                if !u_eff.trim().is_empty() {
+                    if resolve_input(&u_eff, &grading).status == Status::Invalid {
+                        rep.invalid.push(format!("{sname} — Understanding Level: \"{}\" tidak terbaca", u_eff.trim()));
+                    } else {
+                        let val = normalize_grade(&u_eff, &grading);
+                        set_text(&mut rep, "Understanding Level", &mut student.projects[pos].understanding, val, true);
+                    }
+                }
+                if !i_eff.trim().is_empty() {
+                    if resolve_input(&i_eff, &grading).status == Status::Invalid {
+                        rep.invalid.push(format!("{sname} — Inquiry & Research Skills: \"{}\" tidak terbaca", i_eff.trim()));
+                    } else {
+                        let val = normalize_grade(&i_eff, &grading);
+                        set_text(&mut rep, "Inquiry & Research Skills", &mut student.projects[pos].inquiry, val, true);
+                    }
+                }
+                if !n_eff.trim().is_empty() {
+                    set_text(&mut rep, "Narasi", &mut student.projects[pos].narrative, n_eff.trim().to_string(), false);
+                }
+            }
+        }
+
         for (c, key) in keys.iter().enumerate() {
             let Some(key) = key else { continue };
             let raw = at(&sheet, r, c);
@@ -867,7 +1097,16 @@ pub fn import_form(data: &mut AppData, path: &Path) -> Result<FormImportReport, 
                 continue;
             }
             match key {
-                Key::Id | Key::Class | Key::Name | Key::Sick | Key::Permit | Key::Alpha => {}
+                Key::Id
+                | Key::Class
+                | Key::Name
+                | Key::Sick
+                | Key::Permit
+                | Key::Alpha
+                | Key::SlotProject(_)
+                | Key::SlotUnderstanding(_)
+                | Key::SlotInquiry(_)
+                | Key::SlotNarrative(_) => {}
                 Key::Atl(aid) => {
                     let Some((_, label)) = atl_names.iter().find(|(id, _)| id == aid) else { continue };
                     if resolve_input(&raw, &grading).status == Status::Invalid {
@@ -1022,7 +1261,7 @@ mod tests {
 
     #[test]
     fn empty_cells_keep_existing_and_missing_students_added() {
-        let req = FormRequest { classes: vec!["IX-1".into()], include_atl: true, ..Default::default() };
+        let req = FormRequest { classes: vec!["IX-1".into()], include_atl: true, include_snapshot: true, ..Default::default() };
         let path = tmp("empty");
         write_form(&sample(), &req, &path).unwrap();
 
@@ -1063,6 +1302,7 @@ mod tests {
             project_id: Some("p1".into()),
             include_attendance: true,
             effective_days: Some(100),
+            include_snapshot: true,
             ..Default::default()
         };
         let path = tmp("share-guru");
@@ -1139,6 +1379,139 @@ mod tests {
         assert_eq!(fresh.students[0].attendance_i, Some(1));
         assert_eq!(fresh.students[0].attendance_a, Some(0));
         assert_eq!(fresh.students[1].attendance, "100% (Present)");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn all_projects_and_different_projects_per_student_are_imported() {
+        let mut guru1 = sample();
+        // Siswa 1 punya 3 proyek berbeda (p1, p2, p3)
+        guru1.students[0].projects = vec![
+            ProjectEntry {
+                project_id: "p1".into(),
+                understanding: "EE".into(),
+                inquiry: "ME".into(),
+                narrative: "Proyek satu bagus.".into(),
+            },
+            ProjectEntry {
+                project_id: "p2".into(),
+                understanding: "94".into(),
+                inquiry: "EE".into(),
+                narrative: "Proyek dua hebat.".into(),
+            },
+            ProjectEntry {
+                project_id: "p3".into(),
+                understanding: "AE".into(),
+                inquiry: "ME".into(),
+                narrative: "Proyek tiga berkembang.".into(),
+            },
+        ];
+        // Siswa 2 punya proyek ke-4 (p4) dan proyek ke-5 yang baru sebagian diisi
+        guru1.students[1].projects = vec![
+            ProjectEntry {
+                project_id: "p4".into(),
+                understanding: "ME".into(),
+                inquiry: "90".into(),
+                narrative: "Proyek empat Arya.".into(),
+            },
+            ProjectEntry {
+                project_id: "p5".into(),
+                understanding: "EE".into(),
+                inquiry: String::new(),
+                narrative: String::new(),
+            },
+        ];
+
+        // 1. Mode default "*" (Semua proyek siswa)
+        let req_all = FormRequest {
+            classes: vec!["IX-1".into()],
+            include_atl: true,
+            project_id: Some("*".into()),
+            include_attendance: true,
+            include_snapshot: true,
+            ..Default::default()
+        };
+        let path_all = tmp("all-projects");
+        write_form(&guru1, &req_all, &path_all).unwrap();
+
+        let mut guru2 = AppData::default();
+        let rep = import_form(&mut guru2, &path_all).unwrap();
+        assert_eq!(rep.students_added, 2);
+        assert_eq!(guru2.students[0].projects.len(), 3);
+        assert_eq!(guru2.students[0].projects[0].project_id, "p1");
+        assert_eq!(guru2.students[0].projects[0].understanding, "EE");
+        assert_eq!(guru2.students[0].projects[1].project_id, "p2");
+        assert_eq!(guru2.students[0].projects[1].understanding, "94");
+        assert_eq!(guru2.students[0].projects[1].narrative, "Proyek dua hebat.");
+        assert_eq!(guru2.students[0].projects[2].project_id, "p3");
+        assert_eq!(guru2.students[0].projects[2].understanding, "AE");
+
+        assert_eq!(guru2.students[1].projects.len(), 2);
+        assert_eq!(guru2.students[1].projects[0].project_id, "p4");
+        assert_eq!(guru2.students[1].projects[0].narrative, "Proyek empat Arya.");
+        assert_eq!(guru2.students[1].projects[1].project_id, "p5");
+        assert_eq!(guru2.students[1].projects[1].understanding, "EE");
+        let _ = std::fs::remove_file(path_all);
+    }
+
+    #[test]
+    fn facilitator_form_has_no_full_copy_and_does_not_add_students() {
+        use crate::model::ScoreEntry;
+        let mut d = sample();
+        d.students[0].scores.insert("IPA".into(), ScoreEntry { ph: Some(77.0), pts: Some(81.0), manual: None });
+        d.students[0].nisn = "0099887766".into();
+        let req = FormRequest { classes: vec!["IX-1".into()], include_atl: true, ..Default::default() };
+        let path = tmp("no-snapshot");
+        write_form(&d, &req, &path).unwrap();
+
+        // nilai mapel & NISN tidak ada di file (juga tidak di sheet tersembunyi)
+        let mut wb = open_workbook_auto(&path).unwrap();
+        for name in wb.sheet_names() {
+            let range = wb.worksheet_range(&name).unwrap();
+            for row in range.rows() {
+                for c in row {
+                    let t = cell_text(c);
+                    assert!(!t.contains("0099887766") && !t.contains("\"ph\""), "data bocor di sheet {name}: {t}");
+                }
+            }
+        }
+
+        // siswa yang sudah dihapus di aplikasi tidak muncul lagi dari form lama
+        let mut target = sample();
+        target.students.remove(1);
+        let rep = import_form(&mut target, &path).unwrap();
+        assert_eq!(rep.students_added, 0);
+        assert_eq!(rep.unknown_rows, vec!["Putu Arya".to_string()]);
+        assert_eq!(target.students.len(), 2);
+        assert!(!target.students.iter().any(|st| st.name == "Putu Arya"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn stale_copy_never_overwrites_newer_data() {
+        use crate::model::ScoreEntry;
+        // Senin: form pindah-data dibuat (IPA PH 70, ATL caring ME, proyek p1 understanding AE)
+        let mut monday = sample();
+        monday.students[0].scores.insert("IPA".into(), ScoreEntry { ph: Some(70.0), pts: None, manual: None });
+        monday.students[0].atl.insert("caring".into(), RatingEntry { grade: "ME".into(), indicator: String::new() });
+        monday.students[0].projects.push(ProjectEntry { project_id: "p1".into(), understanding: "AE".into(), ..Default::default() });
+        // kolom yang tampil hanya kehadiran; ATL, nilai, dan proyek hanya ada di salinan
+        let req = FormRequest { classes: vec!["IX-1".into()], include_attendance: true, include_snapshot: true, ..Default::default() };
+        let path = tmp("stale");
+        write_form(&monday, &req, &path).unwrap();
+
+        // Rabu: operator mengoreksi data di aplikasi
+        let mut wednesday = monday.clone();
+        wednesday.students[0].scores.get_mut("IPA").unwrap().ph = Some(88.0);
+        wednesday.students[0].atl.get_mut("caring").unwrap().grade = "EE".into();
+        wednesday.students[0].projects[0].understanding = "EE".into();
+
+        // Jumat: form lama diimpor -> koreksi Rabu tetap utuh, yang kosong boleh terisi
+        import_form(&mut wednesday, &path).unwrap();
+        let s0 = &wednesday.students[0];
+        assert_eq!(s0.scores["IPA"].ph, Some(88.0));
+        assert_eq!(s0.atl["caring"].grade, "EE");
+        assert_eq!(s0.projects[0].understanding, "EE");
         let _ = std::fs::remove_file(path);
     }
 }

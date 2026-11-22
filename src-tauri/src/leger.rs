@@ -302,7 +302,7 @@ pub fn build_leger(data: &AppData, classes: &[String]) -> Result<(Workbook, usiz
     let mut by_class: Vec<(String, Vec<StudentView>)> = Vec::new();
     for class in &wanted {
         let mut students: Vec<&crate::model::Student> = data.students.iter().filter(|s| &s.class_name == class).collect();
-        students.sort_by_key(|s| s.name.to_lowercase());
+        students.sort_by(|a, b| crate::model::compare_students(a, b));
         if students.is_empty() {
             continue;
         }

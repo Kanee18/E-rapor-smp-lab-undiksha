@@ -1,24 +1,25 @@
 // Data siswa: impor Dapodik, tambah/ubah/hapus siswa.
 import { api } from '../api.js';
-import { h, avatar, button, swapIn, classTabs, confirmBox, emptyState, errorText, link, openModal, searchBox, toast, toolbar } from '../dom.js';
+import { h, avatar, button, levelOfClass, swapIn, classTabs, confirmBox, emptyState, errorText, link, openModal, searchBox, toast, toolbar } from '../dom.js';
 import { importWizard } from '../import-wizard.js';
 
 export async function render(ctx) {
   const { app, content, actions, setTitle } = ctx;
-  setTitle('Data siswa', 'Diambil dari ekspor Dapodik. Yang disimpan hanya nama, NIS, NISN, jenis kelamin, dan kelas.');
+  setTitle('Data siswa', 'Dari ekspor Dapodik atau daftar siswa Excel lain (SD, SMP, SMA). Yang disimpan hanya nama, NIS, NISN, jenis kelamin, dan kelas.');
   const rerender = async () => { await app.reload(); content.replaceChildren(); actions.replaceChildren(); await render(ctx); };
 
   const classes = app.classes();
   actions.append(
+    ...(classes.length ? [button('Pindahkan kelas…', { onClick: () => moveClassesDialog(app, rerender) })] : []),
     ...(classes.length ? [button('Hapus kelas', { kind: 'danger', onClick: () => deleteClassesDialog(app, rerender) })] : []),
     button('Tambah siswa', { onClick: () => editStudent(app, null, rerender) }),
-    button('Impor dari Excel', { kind: 'primary', onClick: () => importWizard('students', rerender) }),
+    button('Impor dari Excel', { kind: 'primary', onClick: () => importWizard('students', rerender, app) }),
   );
 
   if (!app.data.students.length) {
     content.appendChild(emptyState('Belum ada siswa',
-      'Pilih file ekspor Dapodik (.xls atau .xlsx). Kelas IX dipilih otomatis; kelas lain bisa dicentang.',
-      button('Impor dari Excel', { kind: 'primary', onClick: () => importWizard('students', rerender) })));
+      'Pilih file ekspor Dapodik atau daftar siswa Excel (.xls/.xlsx) dari guru. Kolom Nama, NIS/NISN, L/P, dan kelas ditebak otomatis dan bisa dikoreksi sebelum diimpor.',
+      button('Impor dari Excel', { kind: 'primary', onClick: () => importWizard('students', rerender, app) })));
     return;
   }
 
@@ -31,7 +32,9 @@ export async function render(ctx) {
     tabsBox.replaceChildren(classTabs(classes, filter, (c) => { filter = c; if (c) app.selectedClass = c; draw(); swapIn(tableBox); }, { counts: app.classCounts() }));
     const list = app.data.students
       .filter((s) => (!filter || s.class_name === filter) && (!query || s.name.toLowerCase().includes(query) || s.nis.includes(query) || s.nisn.includes(query)))
-      .sort((a, b) => classes.indexOf(a.class_name) - classes.indexOf(b.class_name) || a.name.localeCompare(b.name, 'id'));
+      // urutan sama dengan file Excel saat diimpor (nomor absen); yang belum punya urutan di belakang
+      .sort((a, b) => classes.indexOf(a.class_name) - classes.indexOf(b.class_name)
+        || (a.order ?? Infinity) - (b.order ?? Infinity) || a.name.localeCompare(b.name, 'id'));
     tableBox.replaceChildren(list.length
       ? h('table', { class: 'ledger' },
         h('thead', {}, h('tr', {}, h('th', { class: 'idx' }, 'No'), ['Nama', 'NIS', 'NISN', 'L/P', 'Kelas'].map((t) => h('th', {}, t)), h('th', {}, ''))),
@@ -137,6 +140,52 @@ function deleteClassesDialog(app, onDone) {
           close();
           if (list.includes(app.selectedClass)) app.selectedClass = null;
           toast(`${r.classes_deleted || list.length} kelas dan ${r.students_deleted} siswa dihapus`, 'ok', 5000);
+          onDone();
+        } catch (e) { toast(errorText(e), 'error'); }
+      } },
+    ],
+  });
+}
+
+/** Pindahkan kelas (siswa + nilai + isian + wali kelas) ke jenjang lain, mis. kelas SD yang terlanjur masuk data SMP. */
+function moveClassesDialog(app, onDone) {
+  const classes = app.classes();
+  const counts = app.classCounts();
+  const others = app.levels.filter((l) => !l.active);
+  const chosen = new Set(classes.filter((c) => levelOfClass(c) && levelOfClass(c) !== app.level));
+  const guess = levelOfClass([...chosen][0]);
+  let target = others.find((l) => l.id === guess)?.id || others[0]?.id;
+  const summary = h('p', { class: 'hint' });
+  const refresh = () => {
+    const n = [...chosen].reduce((a, c) => a + (counts[c] || 0), 0);
+    summary.textContent = chosen.size ? `Dipilih: ${chosen.size} kelas, ${n} siswa.` : 'Belum ada kelas yang dipilih.';
+  };
+  refresh();
+  openModal({
+    title: 'Pindahkan kelas ke jenjang lain',
+    wide: true,
+    body: h('div', { class: 'stack' },
+      h('p', {}, `Siswa di kelas yang dipilih pindah dari data ${app.level} ke jenjang tujuan, lengkap dengan nilai, isian rapor, wali kelas, dan tanda tangannya. Kedua data dibackup dulu.`),
+      h('label', { class: 'field', style: { maxWidth: '260px' } }, h('span', { class: 'lbl' }, 'Pindahkan ke jenjang'),
+        h('select', { onchange: (e) => { target = e.target.value; } },
+          others.map((l) => h('option', { value: l.id, selected: l.id === target }, `${l.label} — ${l.school}`)))),
+      h('div', { class: 'grid-3' }, classes.map((c) => h('label', { class: 'check' },
+        h('input', { type: 'checkbox', checked: chosen.has(c), onchange: (e) => { e.target.checked ? chosen.add(c) : chosen.delete(c); refresh(); } }),
+        `${c} `, h('span', { class: 'muted small' }, `(${counts[c] || 0} siswa${levelOfClass(c) && levelOfClass(c) !== app.level ? ` · ${levelOfClass(c)}?` : ''})`)))),
+      summary),
+    actions: [
+      { label: 'Batal', kind: 'quiet', onClick: (c) => c() },
+      { label: 'Pindahkan', kind: 'primary', onClick: async (close) => {
+        const list = classes.filter((c) => chosen.has(c));
+        if (!list.length) { toast('Pilih minimal satu kelas', 'error'); return; }
+        const t = others.find((l) => l.id === target);
+        if (!(await confirmBox(`Pindahkan ${list.join(', ')} ke jenjang ${t.label}?`, { title: 'Pindahkan kelas', ok: 'Ya, pindahkan' }))) return;
+        try {
+          const r = await api.moveClassesToLevel(list, target);
+          close();
+          if (list.includes(app.selectedClass)) app.selectedClass = null;
+          const skipped = r.report.skipped.length ? ` ${r.report.skipped.length} siswa sudah ada di ${r.target}, tidak digandakan.` : '';
+          toast(`${r.report.moved} siswa dipindah ke ${r.target}.${skipped}`, 'ok', 7000);
           onDone();
         } catch (e) { toast(errorText(e), 'error'); }
       } },

@@ -1,6 +1,6 @@
 // Wizard impor Excel: pilih file → pilih sheet & kelas → hasil.
 import { api } from './api.js';
-import { h, openModal, errorText, toast } from './dom.js';
+import { h, openModal, errorText, levelWarning, toast } from './dom.js';
 
 const KIND = {
   students: { title: 'Impor data siswa', what: 'data siswa (ekspor Dapodik)' },
@@ -33,6 +33,11 @@ export async function importWizard(kind, onDone, app = null) {
     return;
   }
   const sheets = scans.filter((s) => s.kind === kind);
+  // Data siswa bukan ekspor Dapodik (daftar nilai guru SD, daftar kelas SMA, dll.): susunan kolom ditebak.
+  if (kind === 'students' && !sheets.length) {
+    flexibleStudents(modal, path, scans, onDone, null, app);
+    return;
+  }
   if (!sheets.length) {
     modal.setBody(h('div', { class: 'stack' },
       h('div', { class: 'note warn' }, `Di file ini tidak ditemukan sheet ${info.what}.`),
@@ -116,6 +121,11 @@ export async function importWizard(kind, onDone, app = null) {
     sheetPicker,
     desc,
     h('div', {}, classHint, classBox),
+    kind === 'students' ? levelWarning(sheet.classes.map((c) => c.name).filter(Boolean), app?.level) : '',
+    kind === 'students'
+      ? h('p', { class: 'small muted' }, 'Susunan kolom berbeda? ',
+        h('button', { type: 'button', class: 'link', onclick: () => flexibleStudents(modal, path, scans, onDone, sheet.name, app) }, 'Atur kolom sendiri'))
+      : '',
   ));
   modal.setActions([
     { label: 'Batal', kind: 'quiet', onClick: (c) => c() },
@@ -205,4 +215,126 @@ function attendanceResult(rep) {
     ));
   }
   return h('div', { class: 'stack' }, parts);
+}
+
+// ---------------------------------------------------------------- data siswa format bebas
+
+const FIELDS = [
+  ['name', 'Nama siswa', true],
+  ['nis', 'NIS / nomor induk'],
+  ['nisn', 'NISN'],
+  ['gender', 'L / P'],
+  ['class', 'Kolom kelas'],
+];
+
+/**
+ * Impor data siswa dari Excel berformat bebas: aplikasi menebak kolom & kelas,
+ * pengguna melihat pratinjau dan boleh mengoreksi sebelum mengimpor.
+ */
+async function flexibleStudents(modal, path, scans, onDone, preferSheet = null, app = null) {
+  modal.dlg.querySelector('.modal-head h2').textContent = 'Impor data siswa (format bebas)';
+  const usable = scans.filter((s) => s.kind !== 'scores' && s.kind !== 'attendance');
+  const sheetList = usable.length ? usable : scans;
+  let sheetName = preferSheet && sheetList.some((s) => s.name === preferSheet) ? preferSheet : sheetList[0]?.name;
+  let mapping = null;
+  let preview = null;
+  let error = '';
+  const chosen = new Set();
+
+  async function load(next) {
+    try {
+      preview = await api.inspectStudentSheet(path, sheetName, next);
+      mapping = preview.mapping;
+      error = '';
+      chosen.clear();
+      for (const c of preview.classes) chosen.add(c.name);
+    } catch (e) {
+      preview = null;
+      error = errorText(e);
+    }
+    draw();
+  }
+
+  const colLabel = (c) => `${c.letter} — ${c.header || '(tanpa judul)'}${c.samples.length ? ` · ${c.samples.join(', ')}` : ''}`;
+
+  function draw() {
+    const sheetPicker = sheetList.length > 1
+      ? h('label', { class: 'field', style: { maxWidth: '320px' } }, h('span', { class: 'lbl' }, 'Sheet'),
+        h('select', { onchange: (e) => { sheetName = e.target.value; load(null); } },
+          sheetList.map((s) => h('option', { value: s.name, selected: s.name === sheetName }, s.name))))
+      : h('p', {}, 'Sheet: ', h('b', {}, sheetName));
+    if (!preview) {
+      modal.setBody(h('div', { class: 'stack' },
+        h('p', { class: 'hint' }, 'File: ', h('b', {}, path)), sheetPicker,
+        h('div', { class: 'note danger' }, error || 'Membaca…')));
+      modal.setActions([{ label: 'Tutup', kind: 'quiet', onClick: (c) => c() }]);
+      return;
+    }
+    const selects = FIELDS.map(([key, label, required]) => h('label', { class: 'field' },
+      h('span', { class: 'lbl' }, label, required ? ' *' : ''),
+      h('select', { onchange: (e) => { mapping = { ...mapping, [key]: e.target.value === '' ? null : Number(e.target.value) }; load(mapping); } },
+        required ? null : h('option', { value: '', selected: mapping[key] == null }, '(tidak ada)'),
+        preview.columns.map((c) => h('option', { value: String(c.index), selected: mapping[key] === c.index }, colLabel(c))))));
+
+    const classInput = mapping.class == null
+      ? h('label', { class: 'field', style: { maxWidth: '320px' } },
+        h('span', { class: 'lbl' }, 'Kelas untuk siswa di file ini *'),
+        h('input', {
+          value: mapping.default_class || '', placeholder: 'mis. I-C, X-B, IX-1',
+          onchange: (e) => { mapping = { ...mapping, default_class: e.target.value }; load(mapping); },
+        }),
+        h('span', { class: 'hint' }, preview.class_source && mapping.default_class
+          ? `Ditebak dari ${preview.class_source}. Ubah kalau keliru (contoh: IC → I-C, XB → X-B).`
+          : 'Tidak ditemukan di file; ketik nama kelasnya.'))
+      : null;
+
+    const val = (t) => t || h('span', { class: 'muted' }, '—');
+    const table = h('div', { class: 'sheet scroll', style: { maxHeight: '260px' } }, h('table', { class: 'ledger' },
+      h('thead', {}, h('tr', {}, ['Nama', 'NIS', 'NISN', 'L/P', 'Kelas'].map((t) => h('th', {}, t)))),
+      h('tbody', {}, preview.rows.map((r) => h('tr', {},
+        h('td', { class: 'name' }, r.name), h('td', { class: 'tabular' }, val(r.nis)), h('td', { class: 'tabular' }, val(r.nisn)),
+        h('td', {}, val(r.gender)), h('td', {}, val(r.class_name)))))));
+
+    const classBox = preview.classes.length
+      ? h('div', {}, h('div', { class: 'eyebrow', style: { marginBottom: '8px' } }, 'Kelas yang diimpor'),
+        h('div', { class: 'grid-3' }, preview.classes.map((c) => h('label', { class: 'check' },
+          h('input', { type: 'checkbox', checked: chosen.has(c.name), onchange: (e) => (e.target.checked ? chosen.add(c.name) : chosen.delete(c.name)) }),
+          `${c.name} `, h('span', { class: 'muted small' }, `(${c.count} siswa)`)))))
+      : null;
+
+    modal.setBody(h('div', { class: 'stack' },
+      h('p', { class: 'hint' }, 'File: ', h('b', {}, path)),
+      sheetPicker,
+      h('p', { class: 'hint' }, 'Format file ini bukan ekspor Dapodik, jadi kolomnya ditebak otomatis. Cek pratinjau di bawah; kalau ada kolom yang keliru, ganti pilihannya.'),
+      h('div', { class: 'map-grid' }, selects),
+      classInput,
+      h('div', {}, h('div', { class: 'eyebrow', style: { marginBottom: '8px' } },
+        `Pratinjau — ${preview.total} siswa terbaca${preview.total > preview.rows.length ? ` (${preview.rows.length} pertama)` : ''}`), table),
+      preview.warnings.length ? h('div', { class: 'note warn small' }, h('ul', { style: { margin: 0 } }, preview.warnings.map((w) => h('li', {}, w)))) : null,
+      levelWarning(preview.classes.map((c) => c.name), app?.level),
+      classBox,
+      h('p', { class: 'hint' }, 'Yang disimpan hanya nama, NIS, NISN, jenis kelamin, dan kelas. Siswa yang sudah ada diperbarui (dicocokkan lewat NISN, atau NIS/nama di kelas yang sama); nilai dan isian rapornya tidak berubah.')));
+
+    const missingClass = preview.warnings.some((w) => w.includes('belum punya kelas'));
+    modal.setActions([
+      { label: 'Batal', kind: 'quiet', onClick: (c) => c() },
+      { label: `Impor ${preview.total} siswa`, kind: 'primary', disabled: missingClass, onClick: async () => {
+        const classes = [...chosen];
+        if (!classes.length) { toast('Pilih minimal satu kelas', 'error'); return; }
+        modal.setActions([{ label: 'Memproses…', disabled: true }]);
+        try {
+          const rep = await api.importStudentsMapped(path, sheetName, mapping, classes);
+          modal.setBody(studentResult(rep));
+          modal.setActions([{ label: 'Selesai', kind: 'primary', onClick: (c) => c() }]);
+          onDone?.();
+        } catch (e) {
+          toast(errorText(e), 'error');
+          draw();
+        }
+      } },
+    ]);
+  }
+
+  modal.setBody(h('p', { class: 'muted' }, 'Menebak susunan kolom…'));
+  await load(null);
 }

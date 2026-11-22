@@ -14,7 +14,8 @@ export async function render(ctx) {
   const views = await api.studentViews(cls);
   const selected = new Set(views.map((v) => v.student.id));
 
-  const frame = h('iframe', { class: 'desk', title: 'Pratinjau rapor' });
+  // sandbox tanpa allow-scripts: isi rapor (termasuk template kustom) tidak bisa menjalankan skrip
+  const frame = h('iframe', { class: 'desk', title: 'Pratinjau rapor', sandbox: 'allow-same-origin allow-modals' });
   fitPreview(frame);
   actions.appendChild(button('Leger Excel…', { onClick: () => openLegerModal(app) }));
   actions.appendChild(button('PDF per siswa…', { onClick: () => {

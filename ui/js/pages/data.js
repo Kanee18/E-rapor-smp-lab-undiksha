@@ -179,10 +179,15 @@ async function confirmRestore(app, path, onDone) {
         h('thead', {}, h('tr', {}, h('th', {}, ''), h('th', {}, 'Dari file ini'), h('th', {}, 'Data sekarang'))),
         h('tbody', {},
           info.archive_label ? row('Arsip', info.archive_label, '—') : null,
+          row('Jenjang', info.level || '(data lama)', app.level),
+          row('Sekolah', info.school_name || '—', current.settings.school_name),
           row('Siswa', `${info.students} (${info.classes.join(', ') || '—'})`, `${current.students.length}`),
           row('Tahun ajaran', info.academic_year, current.settings.academic_year),
           row('Sub-judul', info.subtitle, current.settings.report_subtitle),
           row('Terakhir diubah', fmtTime(info.last_change_at), fmtTime(current.meta.last_change_at))))),
+      info.level && info.level !== app.level
+        ? h('p', { class: 'note danger' }, h('b', {}, `Ini backup jenjang ${info.level}, `), `sedangkan yang sedang dibuka jenjang ${app.level}. Pindah dulu ke jenjang ${info.level} (tombol di kiri atas) sebelum memulihkan.`)
+        : '',
       h('p', { class: 'note warn' }, 'Data sekarang akan diganti seluruhnya dengan isi file ini. Salinan data sekarang disimpan dulu di folder backup.')),
     actions: [
       { label: 'Batal', kind: 'quiet', onClick: (c) => c() },

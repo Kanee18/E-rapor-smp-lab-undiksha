@@ -17,11 +17,11 @@ use serde::Serialize;
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
-type Grid = Vec<Vec<Data>>;
+pub(crate) type Grid = Vec<Vec<Data>>;
 
 static EMPTY: Data = Data::Empty;
 
-fn cell(grid: &Grid, r: usize, c: usize) -> &Data {
+pub(crate) fn cell(grid: &Grid, r: usize, c: usize) -> &Data {
     grid.get(r).and_then(|row| row.get(c)).unwrap_or(&EMPTY)
 }
 
@@ -48,7 +48,7 @@ fn cell_number(d: &Data) -> Option<f64> {
 }
 
 /// Teks header untuk dibandingkan: huruf besar, tanpa tanda baca.
-fn header(d: &Data) -> String {
+pub(crate) fn header(d: &Data) -> String {
     normalize_name(&cell_text(d))
 }
 
@@ -56,7 +56,7 @@ fn open(path: &Path) -> Result<calamine::Sheets<std::io::BufReader<std::fs::File
     open_workbook_auto(path).map_err(|e| format!("File tidak bisa dibuka: {e}"))
 }
 
-fn read_grid(path: &Path, sheet: &str) -> Result<Grid, String> {
+pub(crate) fn read_grid(path: &Path, sheet: &str) -> Result<Grid, String> {
     sheet_grid(&mut open(path)?, sheet)
 }
 
@@ -126,7 +126,7 @@ pub struct SheetScan {
     pub subjects: Vec<String>,
 }
 
-fn count_classes(classes: impl Iterator<Item = String>) -> Vec<ClassCount> {
+pub(crate) fn count_classes(classes: impl Iterator<Item = String>) -> Vec<ClassCount> {
     let mut map: BTreeMap<(u32, u32, String), usize> = BTreeMap::new();
     for c in classes {
         *map.entry(class_sort_key(&c)).or_default() += 1;
@@ -177,7 +177,7 @@ pub fn scan_workbook(path: &Path) -> Result<Vec<SheetScan>, String> {
 
 // ---------------------------------------------------------------- data siswa
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct StudentRow {
     pub name: String,
     pub nis: String,
@@ -186,6 +186,8 @@ pub struct StudentRow {
     pub class_name: String,
     /// Isi kolom Rombel kalau BERBEDA dengan judul kelas di file (judul kelas yang dipakai).
     pub rombel_conflict: Option<String>,
+    /// Urutan baris di file (1, 2, 3, …): urutan tampil siswa di aplikasi mengikuti ini.
+    pub order: u32,
 }
 
 struct StudentCols {
@@ -220,7 +222,7 @@ fn find_student_header(grid: &Grid) -> Option<(usize, StudentCols)> {
 }
 
 /// NISN selalu 10 digit; kalau tersimpan sebagai angka, nol di depan hilang.
-fn format_nisn(d: &Data) -> String {
+pub(crate) fn format_nisn(d: &Data) -> String {
     match d {
         Data::Float(_) | Data::Int(_) => {
             let t = cell_text(d);
@@ -264,6 +266,7 @@ pub fn parse_students(grid: &Grid) -> Result<Vec<StudentRow>, String> {
             .gender
             .map(|c| cell_text(cell(grid, r, c)).to_uppercase())
             .unwrap_or_default();
+        let order = out.len() as u32 + 1;
         out.push(StudentRow {
             name,
             nis,
@@ -271,6 +274,7 @@ pub fn parse_students(grid: &Grid) -> Result<Vec<StudentRow>, String> {
             gender,
             class_name,
             rombel_conflict,
+            order,
         });
     }
     if out.is_empty() {
@@ -466,11 +470,25 @@ pub fn apply_students(data: &mut AppData, rows: Vec<StudentRow>, classes: &[Stri
     let mut seen_classes: Vec<String> = Vec::new();
     for row in rows.into_iter().filter(|r| wanted.contains(&r.class_name)) {
         let norm = normalize_name(&row.name);
-        let existing = data.students.iter().position(|s| {
-            (!row.nis.is_empty() && s.nis == row.nis)
-                || (!row.nisn.is_empty() && s.nisn == row.nisn)
-                || (s.class_name == row.class_name && normalize_name(&s.name) == norm)
-        });
+        // NISN unik secara nasional. NIS (nomor induk) hanya unik di dalam satu sekolah: SD, SMP,
+        // dan SMA punya penomoran sendiri, jadi NIS saja tidak cukup — harus sekelas atau senama,
+        // supaya siswa SD tidak menimpa siswa SMP yang kebetulan bernomor induk sama.
+        let existing = data
+            .students
+            .iter()
+            .position(|s| !row.nisn.is_empty() && s.nisn == row.nisn)
+            .or_else(|| {
+                data.students.iter().position(|s| {
+                    !row.nis.is_empty()
+                        && s.nis == row.nis
+                        && (s.class_name == row.class_name || normalize_name(&s.name) == norm)
+                })
+            })
+            .or_else(|| {
+                data.students
+                    .iter()
+                    .position(|s| s.class_name == row.class_name && normalize_name(&s.name) == norm)
+            });
         if !seen_classes.contains(&row.class_name) {
             seen_classes.push(row.class_name.clone());
         }
@@ -493,12 +511,14 @@ pub fn apply_students(data: &mut AppData, rows: Vec<StudentRow>, classes: &[Stri
                     s.gender = row.gender;
                 }
                 s.class_name = row.class_name;
+                s.order = Some(row.order);
                 report.updated += 1;
             }
             None => {
                 let id = new_student_id(data, &row.nis);
                 data.students.push(Student {
                     id,
+                    order: Some(row.order),
                     nis: row.nis,
                     nisn: row.nisn,
                     name: row.name,
@@ -881,8 +901,8 @@ pub fn parse_attendance(grid: &Grid, sheet_name: &str) -> Result<AttendanceSheet
     // Cari nama kelas dari judul di atas tabel atau nama sheet kalau ada.
     let mut default_class = detect_class_in_text(sheet_name);
     if default_class.is_none() {
-        'outer: for r in 0..hr {
-            for cell_val in &grid[r] {
+        'outer: for row in grid.iter().take(hr) {
+            for cell_val in row {
                 if let Some(c) = detect_class_in_text(&cell_text(cell_val)) {
                     default_class = Some(c);
                     break 'outer;
@@ -1216,5 +1236,65 @@ mod tests {
         assert_eq!(data.students[1].attendance, "100% (Present)");
         assert_eq!(data.students[2].attendance, "100% (Present)");
         assert_eq!(data.students[2].attendance_s, Some(0));
+    }
+
+    #[test]
+    fn same_school_number_in_another_school_does_not_overwrite() {
+        let mut data = AppData::default();
+        data.students.push(Student {
+            id: "3941".into(),
+            nis: "3941".into(),
+            name: "Siswa SMP".into(),
+            class_name: "IX-1".into(),
+            ..Default::default()
+        });
+        // siswa SD dengan nomor induk yang kebetulan sama
+        let row = StudentRow {
+            name: "Siswa SD".into(),
+            nis: "3941".into(),
+            nisn: String::new(),
+            gender: "P".into(),
+            class_name: "I-C".into(),
+            rombel_conflict: None,
+            order: 1,
+        };
+        let rep = apply_students(&mut data, vec![row.clone()], &["I-C".into()]);
+        assert_eq!((rep.added, rep.updated), (1, 0));
+        assert_eq!(data.students[0].name, "Siswa SMP");
+        assert_eq!(data.students[0].class_name, "IX-1");
+        assert_ne!(data.students[1].id, "3941", "id tidak boleh bentrok");
+        // impor ulang file SD yang sama memperbarui siswa SD, bukan menambah lagi
+        let rep2 = apply_students(&mut data, vec![row], &["I-C".into()]);
+        assert_eq!((rep2.added, rep2.updated), (0, 1));
+        assert_eq!(data.students.len(), 2);
+    }
+
+    #[test]
+    fn student_order_follows_the_excel_file_not_the_alphabet() {
+        let row = |name: &str, order: u32| StudentRow {
+            name: name.into(),
+            nis: String::new(),
+            nisn: String::new(),
+            gender: String::new(),
+            class_name: "I-C".into(),
+            rombel_conflict: None,
+            order,
+        };
+        let mut data = AppData::default();
+        // urutan di file: Zayne, Anak, Made (bukan abjad)
+        apply_students(&mut data, vec![row("Zayne Broslyn", 1), row("Anak Agung Ayu", 2), row("Made Dewi", 3)], &["I-C".into()]);
+        // siswa lama tanpa urutan (ditambah sebelum fitur ini) → di belakang, menurut abjad
+        data.students.push(Student { id: "x".into(), name: "Bagus".into(), class_name: "I-C".into(), ..Default::default() });
+        let names = |d: &AppData| {
+            let mut v: Vec<&Student> = d.students.iter().collect();
+            v.sort_by(|a, b| crate::model::compare_students(a, b));
+            v.iter().map(|s| s.name.clone()).collect::<Vec<_>>()
+        };
+        assert_eq!(names(&data), ["Zayne Broslyn", "Anak Agung Ayu", "Made Dewi", "Bagus"]);
+        // file diperbarui (urutan absen berubah) → impor ulang mengikuti urutan baru
+        apply_students(&mut data, vec![row("Made Dewi", 1), row("Zayne Broslyn", 2), row("Anak Agung Ayu", 3)], &["I-C".into()]);
+        assert_eq!(names(&data), ["Made Dewi", "Zayne Broslyn", "Anak Agung Ayu", "Bagus"]);
+        // tambah siswa manual → di akhir kelas
+        assert_eq!(crate::model::next_order(&data.students, "I-C"), 4);
     }
 }

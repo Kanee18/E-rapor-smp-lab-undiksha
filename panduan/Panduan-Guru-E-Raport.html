@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Panduan Singkat E-Raport</title>
+<style>
+  @font-face { font-family: "Jakarta"; font-weight: 200 800; src: url(../ui/fonts/plus-jakarta-sans-latin-wght-normal.woff2) format("woff2"); }
+  @page { size: A4; margin: 0; }
+  :root { --ink: #191C23; --ink2: #4A505C; --ink3: #7A808C; --line: #E3E3DD; --soft: #F6F6F3; --blue: #3653D3; --blue-soft: #EEF1FD; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font: 9.3pt/1.42 "Jakarta", "Segoe UI", Arial, sans-serif; color: var(--ink); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { width: 210mm; height: 297mm; padding: 12mm 14mm 9mm; display: flex; flex-direction: column; gap: 3.6mm; break-after: page; overflow: hidden; }
+  .page:last-child { break-after: auto; }
+  header { display: flex; align-items: center; gap: 4mm; padding-bottom: 3.5mm; border-bottom: 2px solid var(--ink); }
+  header img { height: 15mm; }
+  header .t { flex: 1; }
+  header h1 { margin: 0; font-size: 17pt; letter-spacing: -0.02em; line-height: 1.15; }
+  header p { margin: 1mm 0 0; color: var(--ink2); }
+  header .tag { font-size: 8pt; font-weight: 700; color: var(--blue); background: var(--blue-soft); padding: 1.2mm 3mm; border-radius: 99px; white-space: nowrap; }
+  h2 { margin: 0 0 1.6mm; font-size: 11pt; display: flex; align-items: center; gap: 2.4mm; }
+  h2 .n { display: inline-grid; place-items: center; width: 6mm; height: 6mm; border-radius: 1.6mm; background: var(--blue); color: #fff; font-size: 9pt; flex: none; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4.2mm; }
+  .box { border: 1px solid var(--line); border-radius: 3mm; padding: 3.4mm 4mm; break-inside: avoid; }
+  .box.soft { background: var(--soft); }
+  .box.blue { background: var(--blue-soft); border-color: #D3DCF8; }
+  ol, ul { margin: 0; padding-left: 4.6mm; }
+  li { margin: 0.8mm 0; }
+  li::marker { color: var(--ink3); font-weight: 700; }
+  b, .ui { font-weight: 700; }
+  .ui { color: var(--blue); white-space: nowrap; }
+  kbd { font: 700 8pt "Jakarta", Arial, sans-serif; padding: 0.2mm 1.4mm; border: 1px solid #C9C9C2; border-bottom-width: 2px; border-radius: 1.2mm; background: #fff; white-space: nowrap; }
+  .codes { display: flex; gap: 2mm; flex-wrap: wrap; margin-top: 1.6mm; }
+  .code { border-radius: 99px; padding: 0.6mm 2.6mm; font-weight: 700; font-size: 8.4pt; }
+  .ee { background: #E3F4EA; color: #146B43; } .me { background: #E6EBFC; color: #2A43B4; } .ae { background: #FBF1DC; color: #8A5E06; } .be { background: #FBE7E4; color: #A8342A; }
+  .muted { color: var(--ink3); }
+  .tips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.4mm 4mm; }
+  .tips div { display: flex; flex-direction: column; gap: 0.6mm; }
+  .tips b { font-size: 9pt; }
+  .note { border-left: 3px solid var(--blue); padding: 1.6mm 3mm; background: var(--soft); border-radius: 0 2mm 2mm 0; }
+  .warn { border-left-color: #C98507; background: #FDF8EC; }
+  footer { margin-top: auto; display: flex; justify-content: space-between; color: var(--ink3); font-size: 8pt; border-top: 1px solid var(--line); padding-top: 2.4mm; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ HALAMAN 1: GURU -->
+<section class="page">
+  <header>
+    <img src="../ui/logo-sekolah.png" alt="">
+    <div class="t">
+      <h1>Panduan Singkat E-Raport</h1>
+      <p>Mengisi rapor <b>National Plus Class</b> — untuk wali kelas &amp; fasilitator proyek</p>
+    </div>
+    <span class="tag">SD · SMP · SMA</span>
+  </header>
+
+  <div class="box blue">
+    <h2><span class="n">1</span>Mulai</h2>
+    <ol>
+      <li>Buka <b>E-Raport</b>. Kalau diminta, ketik kata sandi dari operator.</li>
+      <li>Pilih <b>jenjang</b> di kiri atas: <span class="ui">SD</span> · <span class="ui">SMP</span> · <span class="ui">SMA</span>. Data tiap jenjang terpisah — pastikan jenjangnya benar sebelum mengisi.</li>
+      <li>Klik menu <span class="ui">Isi rapor</span>, lalu pilih kelas di tab atas (mis. <b>I-C</b>, <b>IX-1</b>, <b>X-B</b>).</li>
+      <li>Pilih tampilan: <span class="ui">Per siswa</span> (lengkap, satu siswa per halaman) atau <span class="ui">Tabel kelas</span> (cepat, seperti Excel — satu baris satu siswa).</li>
+      <li><b>Tidak perlu menekan Simpan.</b> Semua isian tersimpan otomatis; tulisan <b>Tersimpan</b> muncul di pojok.</li>
+    </ol>
+    <div class="codes">Cara mengisi nilai: ketik huruf awal
+      <span class="code ee">E → EE</span><span class="code me">M → ME</span><span class="code ae">A → AE</span><span class="code be">B → BE</span>
+      <span class="muted">atau angka 0–100 (otomatis jadi predikat).</span></div>
+  </div>
+
+  <div class="grid">
+    <div class="box">
+      <h2><span class="n">2</span>Wali kelas</h2>
+      <ol>
+        <li><b>ATL &amp; Learner Profile</b> (7 atribut): di <span class="ui">Tabel kelas</span> isi satu kolom ke bawah; tekan <kbd>Enter</kbd> atau <kbd>↓</kbd> untuk pindah ke siswa berikutnya.</li>
+        <li><b>Kehadiran</b>: isi jumlah hari <b>S</b> (sakit), <b>I</b> (izin), <b>A</b> (alpa). Persentase di rapor, mis. <b>98% (Present)</b>, dihitung otomatis dari hari efektif.</li>
+        <li>Punya rekap absensi di Excel? Pakai <span class="ui">Impor absensi Excel</span> atau tempel langsung (lihat bagian 4).</li>
+        <li>Di <span class="ui">Per siswa</span>, indikator bisa diubah khusus untuk satu siswa lewat <b>Ubah untuk siswa ini</b>.</li>
+      </ol>
+    </div>
+    <div class="box">
+      <h2><span class="n">3</span>Fasilitator proyek</h2>
+      <ol>
+        <li>Pastikan siswa sudah punya proyek: pilih di kolom <b>Proyek</b>, atau pilih proyek di kanan atas lalu <span class="ui">Terapkan</span> untuk sekelas.</li>
+        <li>Isi <b>Understanding Level</b> dan <b>Inquiry &amp; Research Skills</b>.</li>
+        <li><b>Narasi</b> (bahasa Inggris, 2–4 kalimat): klik <span class="ui">Draf otomatis</span> — draf disusun sesuai predikat siswa, lengkap dengan nama dan he/she. <b>Baca dan sesuaikan</b> dengan pengamatan Anda.</li>
+        <li>Satu kelas sekaligus: <span class="ui">Draf narasi kosong…</span> di Tabel kelas (hanya mengisi narasi yang masih kosong).</li>
+        <li>Mau menyusun sendiri? Klik <span class="ui">Bank kalimat…</span> lalu klik kalimat untuk menambahkannya.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="box soft">
+    <h2><span class="n">4</span>Supaya lebih cepat</h2>
+    <div class="tips">
+      <div><b>Tempel dari Excel</b><span>Blok sel di Excel → <kbd>Ctrl</kbd>+<kbd>C</kbd>, klik sel pertama di Tabel kelas → <kbd>Ctrl</kbd>+<kbd>V</kbd>. Kalau kolom pertama berisi <b>nama siswa</b>, baris dicocokkan lewat nama (urutan boleh beda).</span></div>
+      <div><b>Yang belum selesai saja</b><span>Per siswa: filter <span class="ui">Belum lengkap</span> dan tombol <span class="ui">Ke yang belum lengkap</span>. Tabel kelas: centang <span class="ui">Hanya yang belum lengkap</span>.</span></div>
+      <div><b>Cek hasil</b><span>Klik <span class="ui">Pratinjau</span> untuk melihat rapor siswa persis seperti saat dicetak.</span></div>
+      <div><b>Tulisan terlalu kecil?</b><span><kbd>Ctrl</kbd>+<kbd>+</kbd> memperbesar, <kbd>Ctrl</kbd>+<kbd>−</kbd> memperkecil, <kbd>Ctrl</kbd>+<kbd>0</kbd> kembali normal.</span></div>
+      <div><b>Tinggalkan laptop?</b><span>Tekan <kbd>Ctrl</kbd>+<kbd>L</kbd> untuk mengunci. Aplikasi juga terkunci sendiri kalau lama tidak dipakai.</span></div>
+      <div><b>Lewat Excel saja</b><span>Tidak memakai aplikasi? Minta <b>form Excel</b> ke operator, isi kolom putih (jangan ubah kolom abu-abu ID/Nama), lalu kirim kembali.</span></div>
+    </div>
+  </div>
+
+  <div class="note warn"><b>Penting:</b> nilai mapel diambil dari halaman Nilai mapel (diimpor operator) — guru tidak perlu mengetik ulang. Kalau ada yang salah atau ragu, catat lalu sampaikan ke operator; jangan menghapus data siswa.</div>
+
+  <footer><span>E-Raport · Sekolah Laboratorium Undiksha Singaraja (SD · SMP · SMA)</span><span>Halaman 1 — untuk semua guru</span></footer>
+</section>
+
+<!-- ============================================================ HALAMAN 2: OPERATOR -->
+<section class="page">
+  <header>
+    <img src="../ui/logo-sekolah.png" alt="">
+    <div class="t">
+      <h1>Panduan Operator E-Raport</h1>
+      <p>Persiapan, membagikan form, mencetak, dan menjaga data tetap aman</p>
+    </div>
+    <span class="tag">UNTUK OPERATOR</span>
+  </header>
+
+  <div class="grid">
+    <div class="box blue">
+      <h2><span class="n">1</span>Persiapan (sekali di awal)</h2>
+      <ol>
+        <li>Pilih <b>jenjang</b> di kiri atas (SD/SMP/SMA). Jenjang yang baru pertama dibuka bisa <b>menyalin pengaturan</b> dari jenjang lain.</li>
+        <li><span class="ui">Data siswa</span> → <span class="ui">Impor dari Excel</span>: ekspor Dapodik atau daftar siswa Excel dari guru (kolom ditebak otomatis, cek pratinjau). Salah jenjang? <span class="ui">Pindahkan kelas…</span></li>
+        <li><span class="ui">Nilai mapel</span> → <span class="ui">Impor nilai dari Excel</span> (rekap PH/PTS).</li>
+        <li><span class="ui">Pengaturan</span>: nama kepala sekolah, wali kelas tiap kelas, tempat &amp; tanggal, logo, dan <b>tanda tangan</b> (basah atau digital).</li>
+        <li><span class="ui">Isi rapor</span> → <b>ubah hari efektif</b> semester (dipakai untuk menghitung % kehadiran).</li>
+      </ol>
+    </div>
+    <div class="box">
+      <h2><span class="n">2</span>Membagikan form Excel</h2>
+      <ol>
+        <li><span class="ui">Isi rapor</span> → <span class="ui">Buat form Excel</span>: pilih kelas dan kolom (ATL, proyek, kehadiran).</li>
+        <li>Untuk fasilitator/wali kelas: <b>jangan centang</b> "Sertakan salinan data lengkap". Centang itu hanya untuk memindahkan data ke aplikasi E-Raport guru lain.</li>
+        <li>Form yang kembali: <span class="ui">Impor form</span> → baca pratinjau (isian yang diganti, siswa baru, yang tidak terbaca) → <span class="ui">Terapkan</span>.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="box">
+      <h2><span class="n">3</span>Memantau &amp; mencetak</h2>
+      <ol>
+        <li><span class="ui">Ringkasan</span>: berapa rapor siap cetak, kemajuan per kelas, dan daftar <b>Perlu dicek</b>.</li>
+        <li><span class="ui">Cetak</span>: pilih kelas &amp; siswa → <span class="ui">Cetak / Simpan PDF</span> (satu siswa per lembar).</li>
+        <li><span class="ui">PDF per siswa…</span>: satu file PDF per siswa di folder pilihan. <span class="ui">Leger Excel…</span>: rekap nilai per kelas.</li>
+      </ol>
+    </div>
+    <div class="box">
+      <h2><span class="n">4</span>Data aman</h2>
+      <ol>
+        <li><span class="ui">Data &amp; arsip</span> → <span class="ui">Backup ke flashdisk</span> <b>setiap selesai sesi pengisian</b>.</li>
+        <li>Ada yang salah? <span class="ui">Pulihkan data</span> dari backup — data sekarang disalin dulu, jadi selalu bisa dibatalkan.</li>
+        <li>Pasang <b>kata sandi aplikasi</b> di Data &amp; arsip. Simpan <b>kode pemulihan</b> di kertas, terpisah dari laptop.</li>
+        <li>Hapus kelas / siswa otomatis membuat backup lebih dulu.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="box soft">
+    <h2><span class="n">5</span>Saat uji coba dengan guru</h2>
+    <ul>
+      <li><b>Sebelum mulai:</b> lakukan <span class="ui">Backup ke flashdisk</span>. Setelah uji coba, data bisa dikembalikan lewat <span class="ui">Pulihkan data</span>.</li>
+      <li>Bagikan <b>halaman 1</b> panduan ini ke setiap guru. Minta guru mencoba satu kelas di <span class="ui">Tabel kelas</span>, lalu membuka satu siswa di <span class="ui">Per siswa</span> dan <span class="ui">Pratinjau</span>.</li>
+      <li>Catat masukan guru: bagian yang membingungkan, kolom yang kurang, atau langkah yang terlalu lama.</li>
+    </ul>
+  </div>
+
+  <div class="note"><b>Aturan predikat (bisa diubah di Pengaturan):</b> EE 96–100 · ME 91–95 · AE 86–90 · BE 80–85. Nilai akhir di bawah 80 sementara dicetak BE dan muncul di daftar <b>Perlu dicek</b>.</div>
+
+  <footer><span>E-Raport · Sekolah Laboratorium Undiksha Singaraja (SD · SMP · SMA)</span><span>Halaman 2 — untuk operator</span></footer>
+</section>
+</body>
+</html>

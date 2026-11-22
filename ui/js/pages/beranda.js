@@ -52,7 +52,7 @@ export async function render({ app, content, setTitle }) {
   const pct = total ? nReady / total : 0;
   content.appendChild(h('section', { class: 'banner' },
     h('div', { class: 'banner-text' },
-      h('span', { class: 'pill' }, `${term} · ${s.academic_year}`),
+      h('span', { class: 'pill' }, `${app.level} · ${term} · ${s.academic_year}`),
       h('p', { class: 'greet' }, greeting()),
       h('h1', {}, headline),
       h('p', { class: 'next' }, next.text),

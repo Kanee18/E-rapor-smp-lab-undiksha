@@ -7,25 +7,24 @@ export function openFormBuilder(app) {
   const s = app.data.settings;
   const classes = app.classes();
   const initialClasses = app.selectedClass ? [app.selectedClass] : classes.slice(0, 1);
-  const activeProjInClass = app.data.students
-    .find((st) => initialClasses.includes(st.class_name) && st.projects.length)?.projects[0]?.project_id;
   const req = {
     classes: initialClasses,
     include_atl: true,
-    project_id: (activeProjInClass && s.projects.some((p) => p.id === activeProjInClass))
-      ? activeProjInClass
-      : (s.projects[0]?.id ?? null),
+    project_id: '*',
     only_project_members: false,
     include_attendance: true,
     effective_days: s.effective_days || 100,
+    // Salinan lengkap (nilai semua mapel, NISN, semua isian) hanya untuk pindah data ke
+    // aplikasi E-Raport guru lain; form untuk fasilitator tidak perlu membawanya.
+    include_snapshot: false,
   };
-  let withProject = Boolean(req.project_id);
+  let withProject = Boolean(s.projects.length);
 
   const countEl = h('p', { class: 'small muted tabular' });
   const update = () => {
     const n = app.data.students.filter((st) => req.classes.includes(st.class_name)
-      && (!(withProject && req.only_project_members) || st.projects.some((p) => p.project_id === req.project_id))).length;
-    const parts = [req.include_atl && 'ATL', withProject && 'proyek + narasi', req.include_attendance && 'kehadiran'].filter(Boolean);
+      && (!(withProject && req.only_project_members) || (req.project_id === '*' ? st.projects.length > 0 : st.projects.some((p) => p.project_id === req.project_id)))).length;
+    const parts = [req.include_atl && 'ATL', withProject && (req.project_id === '*' ? 'semua proyek + narasi' : 'proyek + narasi'), req.include_attendance && 'kehadiran'].filter(Boolean);
     countEl.textContent = n
       ? `${n} siswa · kolom: ${parts.join(', ') || '—'}`
       : 'Tidak ada siswa untuk pilihan ini.';
@@ -34,7 +33,8 @@ export function openFormBuilder(app) {
     h('input', { type: 'checkbox', checked, onchange: (e) => { onChange(e.target.checked); update(); } }), label, extra || null);
 
   const projectSelect = h('select', { style: { width: 'auto', minWidth: '240px' }, onchange: (e) => { req.project_id = e.target.value; update(); } },
-    s.projects.map((p) => h('option', { value: p.id, selected: p.id === req.project_id }, p.theme ? `${p.name} — ${p.theme}` : p.name)));
+    h('option', { value: '*', selected: req.project_id === '*' }, 'Semua proyek siswa (lengkap)'),
+    ...s.projects.map((p) => h('option', { value: p.id, selected: p.id === req.project_id }, p.theme ? `${p.name} — ${p.theme}` : p.name)));
 
   const effDaysWrap = h('div', { style: { paddingLeft: '23px', display: 'flex', alignItems: 'center', gap: '8px' } },
     h('span', { class: 'small muted' }, 'Total hari efektif semester:'),
@@ -45,8 +45,11 @@ export function openFormBuilder(app) {
     }),
     h('span', { class: 'small muted' }, 'hari (S, I, A di Excel otomatis dihitung jadi "98% (Present)")'));
 
+  const snapshotNote = h('p', { class: 'note warn small', hidden: true },
+    'Centang hanya untuk memindahkan data ke aplikasi E-Raport guru lain. Salinan ini tersimpan di sheet tersembunyi yang ',
+    h('b', {}, 'mudah dimunculkan di Excel'), ', jadi jangan kirim file ini ke fasilitator atau lewat grup chat.');
   const body = h('div', { class: 'stack' },
-    h('p', {}, 'File Excel ini berisi daftar siswa beserta data yang sudah kamu isi. File ini bisa diisi di Microsoft Excel ATAU dikirim ke guru lain untuk dibuka lewat tombol "Impor form" di halaman Isi rapor mereka (data siswa, nilai, dan isian yang sudah ada otomatis ikut terbawa).'),
+    h('p', {}, 'File Excel ini berisi daftar siswa dan kolom yang dipilih di bawah (isian yang sudah ada ikut tercantum). Isi di Microsoft Excel, lalu masukkan kembali lewat "Impor form".'),
     h('div', {}, h('div', { class: 'eyebrow', style: { marginBottom: '8px' } }, 'Kelas'),
       h('div', { class: 'grid-3' }, classes.map((c) => check(c, req.classes.includes(c), (on) => {
         req.classes = on ? [...req.classes, c] : req.classes.filter((x) => x !== c);
@@ -64,6 +67,12 @@ export function openFormBuilder(app) {
         effDaysWrap.style.display = on ? 'flex' : 'none';
       }),
       effDaysWrap),
+    h('div', { class: 'stack', style: { gap: '6px' } }, h('div', { class: 'eyebrow' }, 'Untuk guru lain'),
+      check('Sertakan salinan data lengkap (nilai semua mapel, NIS/NISN, semua isian)', req.include_snapshot, (on) => {
+        req.include_snapshot = on;
+        snapshotNote.hidden = !on;
+      }),
+      snapshotNote),
     countEl);
   update();
 
@@ -78,9 +87,11 @@ export function openFormBuilder(app) {
           const saved = await api.saveForm({ ...req, project_id: withProject ? req.project_id : null });
           if (!saved) return; // dialog dibatalkan
           modal.setBody(h('div', { class: 'stack' },
-            h('p', { class: 'note ok' }, h('b', {}, 'Form tersimpan. '), `${saved.students} siswa beserta isiannya sudah disertakan.`),
+            h('p', { class: 'note ok' }, h('b', {}, 'Form tersimpan. '), `${saved.students} siswa.`),
             h('p', { class: 'small tabular' }, saved.path),
-            h('p', { class: 'muted' }, 'Kirim file ini ke guru/fasilitator lain. Guru lain cukup membuka menu Isi rapor lalu klik "Impor form" untuk melihat semua siswa dan isian yang sudah kamu buat (atau mengisinya langsung di Excel).')));
+            h('p', { class: 'muted' }, req.include_snapshot
+              ? 'File ini membawa salinan data lengkap. Kirim langsung ke guru yang bersangkutan (bukan grup), lalu guru itu membuka Isi rapor → "Impor form".'
+              : 'Kirim file ini ke fasilitator/wali kelas. Setelah diisi dan dikirim kembali, gunakan tombol "Impor form".')));
           modal.setActions([
             { label: 'Tampilkan di folder', onClick: () => api.revealPath(saved.path).catch((e) => toast(errorText(e), 'error')) },
             { label: 'Selesai', kind: 'primary', onClick: (c) => c() },
@@ -150,8 +161,9 @@ function summary(rep, path) {
     h('p', { class: 'small muted tabular' }, rep.project ? `${rep.project} · ${path}` : path),
     head,
     rep.projects_added && !rep.applied ? h('p', { class: 'small muted' }, `${rep.projects_added} data proyek siswa ikut disertakan.`) : null,
+    list(rep.applied ? 'Siswa baru yang ditambahkan' : 'Siswa baru yang akan ditambahkan (cek dulu!)', rep.added_names || [], 'warn'),
     list('Isian lama yang diganti', rep.overwritten, 'warn'),
     list('Tidak terbaca (dilewati)', rep.invalid, 'danger'),
-    list('Baris tanpa nama siswa (dilewati)', rep.unknown_rows, 'danger'),
+    list('Siswa tidak ditemukan di aplikasi ini (dilewati)', rep.unknown_rows, 'danger'),
     list('Catatan', rep.notes, 'warn'));
 }

@@ -6,6 +6,7 @@
 mod commands;
 pub mod forms;
 pub mod grading;
+pub mod levels;
 pub mod importer;
 pub mod leger;
 pub mod model;
@@ -13,6 +14,7 @@ pub mod names;
 pub mod pdf;
 pub mod report;
 pub mod security;
+pub mod student_flex;
 pub mod store;
 pub mod view;
 
@@ -38,10 +40,15 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let dir = resolve_data_dir(app)?;
-            let (store, warning) = store::Store::open(dir.clone())?;
-            let security = security::Security::open(&dir).unwrap_or_else(|e| security::Security::broken(&dir, e));
-            app.manage(commands::AppState::new(store, warning, security));
+            let root = resolve_data_dir(app)?;
+            // buka jenjang terakhir (SD / SMP / SMA); SMP = folder utama (data lama)
+            let level = levels::read_active(&root);
+            let (mut store, warning) = store::Store::open(levels::level_dir(&root, &level))?;
+            if store.data.meta.level.is_empty() {
+                store.data.meta.level = level.clone(); // tersimpan bersama perubahan berikutnya
+            }
+            let security = security::Security::open(&root).unwrap_or_else(|e| security::Security::broken(&root, e));
+            app.manage(commands::AppState::new(store, warning, security, root, level));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -58,6 +65,8 @@ pub fn run() {
             commands::pick_excel_file,
             commands::scan_excel,
             commands::import_students,
+            commands::inspect_student_sheet,
+            commands::import_students_mapped,
             commands::import_scores,
             commands::import_attendance,
             commands::render_report,
@@ -80,6 +89,9 @@ pub fn run() {
             commands::pick_image_file,
             commands::load_logo,
             commands::load_signature_source,
+            commands::list_levels,
+            commands::switch_level,
+            commands::move_classes_to_level,
             commands::security_status,
             commands::security_unlock,
             commands::security_reset_with_recovery,

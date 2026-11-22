@@ -10,7 +10,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-const TIMEOUT: Duration = Duration::from_secs(90);
+/// Satu rapor biasanya selesai ±1 detik; batas ini hanya untuk proses Edge yang macet.
+const TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Lokasi msedge.exe, atau `None` kalau tidak ditemukan.
 pub fn find_edge() -> Option<PathBuf> {
@@ -85,7 +86,7 @@ fn print_one(edge: &Path, html_path: &Path, out: &Path, profile: &Path) -> Resul
         match child.try_wait() {
             Ok(Some(_)) => break,
             Ok(None) if start.elapsed() > TIMEOUT => {
-                let _ = child.kill();
+                kill_tree(&mut child);
                 return Err("waktu habis".into());
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(100)),
@@ -96,6 +97,21 @@ fn print_one(edge: &Path, html_path: &Path, out: &Path, profile: &Path) -> Resul
         Ok(m) if m.len() > 0 => Ok(()),
         _ => Err("PDF tidak terbentuk".into()),
     }
+}
+
+/// Hentikan Edge beserta proses anaknya. `child.kill()` saja meninggalkan proses anak
+/// yang tetap mengunci folder profil, sehingga percobaan berikutnya ikut macet.
+fn kill_tree(child: &mut std::process::Child) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = Command::new("taskkill")
+            .args(["/T", "/F", "/PID", &child.id().to_string()])
+            .creation_flags(0x0800_0000)
+            .status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 /// Jalankan semua pekerjaan dengan `workers` proses Edge paralel.
@@ -128,7 +144,11 @@ pub fn run_jobs(
                 loop {
                     let i = next.fetch_add(1, Ordering::SeqCst);
                     let Some(job) = jobs.get(i) else { break };
-                    if let Err(e) = print_one(edge, &work.join(format!("{i}.html")), &job.out, &profile) {
+                    let html = work.join(format!("{i}.html"));
+                    // Edge kadang macet sekali-sekali; coba ulang satu kali dengan profil baru.
+                    let result = print_one(edge, &html, &job.out, &profile)
+                        .or_else(|_| print_one(edge, &html, &job.out, &work.join(format!("profil-{w}-ulang-{i}"))));
+                    if let Err(e) = result {
                         if let Ok(mut f) = failures.lock() {
                             f.push((job.label.clone(), e));
                         }

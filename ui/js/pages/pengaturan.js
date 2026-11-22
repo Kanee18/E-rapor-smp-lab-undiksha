@@ -88,7 +88,7 @@ export async function render(ctx) {
                 if (confirmDelete && !(await confirmBox(confirmDelete(item), { ok: 'Hapus', danger: true }))) return;
                 items.splice(i, 1); markDirty(); drawTable();
               } }, icon('trash'))))))),
-        addLabel ? h('div', { class: 'add-row' }, link(`+ ${addLabel}`, () => { items.push(make()); markDirty(); drawTable(); })) : null);
+        addLabel ? h('div', { class: 'add-row' }, link(`+ ${addLabel}`, () => { items.push(make()); markDirty(); drawTable(); })) : '');
     };
     drawTable();
     return wrap;
@@ -137,18 +137,17 @@ export async function render(ctx) {
     const updateSum = () => { sum.textContent = `Total bobot ${d.grading.weight_ph + d.grading.weight_pts}%, dihitung sebagai rata-rata berbobot.`; };
     updateSum();
 
+    // Logo & posisinya langsung disimpan, tapi HANYA bagian itu: diterapkan ke pengaturan yang
+    // tersimpan, bukan ke draf. Perubahan lain di halaman ini yang belum diklik Simpan tetap
+    // berstatus belum tersimpan (tidak ikut tersimpan diam-diam).
     const saveLogoSettings = async (patch, msg) => {
-      Object.assign(d, patch);
       try {
-        await api.saveSettings(d);
+        await api.saveSettings({ ...structuredClone(app.data.settings), ...patch });
         await app.reload();
-        draft = structuredClone(app.data.settings);
-        setDirty(false);
+        for (const k of Object.keys(patch)) d[k] = app.data.settings[k];
         toast(msg, 'ok');
         draw();
       } catch (e) {
-        markDirty();
-        draw();
         toast(errorText(e), 'error');
       }
     };

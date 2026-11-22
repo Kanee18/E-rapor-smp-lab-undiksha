@@ -41,6 +41,9 @@ pub struct DataMeta {
     pub last_change_at: Option<String>,
     pub last_external_backup_at: Option<String>,
     pub last_external_backup_dir: Option<String>,
+    /// Jenjang pemilik data ini ("SD", "SMP", "SMA"); dipakai untuk memperingatkan saat
+    /// backup suatu jenjang hendak dipulihkan ke jenjang lain. Kosong = data lama.
+    pub level: String,
     /// Hanya terisi di file arsip.
     pub archive_label: Option<String>,
     pub archived_at: Option<String>,
@@ -276,6 +279,9 @@ pub struct ClassConfig {
 pub struct Student {
     /// ID internal yang tidak berubah (biasanya NIS saat pertama diimpor).
     pub id: String,
+    /// Urutan siswa di kelasnya, sama dengan urutan baris di file Excel saat diimpor
+    /// (nomor absen). Kosong = data lama/ditambah sebelum ada urutan → di belakang, menurut abjad.
+    pub order: Option<u32>,
     pub nis: String,
     pub nisn: String,
     pub name: String,
@@ -444,6 +450,25 @@ pub fn grade_class_label(class_name: &str) -> String {
         Some(g) => format!("Grade {g} ({class_name})"),
         None => class_name.to_string(),
     }
+}
+
+/// Urutan tampil siswa di seluruh aplikasi (daftar, nilai, isi rapor, cetak, PDF, form, leger):
+/// kelas, lalu urutan di file Excel, lalu nama (untuk siswa yang belum punya urutan).
+pub fn compare_students(a: &Student, b: &Student) -> std::cmp::Ordering {
+    class_sort_key(&a.class_name)
+        .cmp(&class_sort_key(&b.class_name))
+        .then_with(|| a.order.unwrap_or(u32::MAX).cmp(&b.order.unwrap_or(u32::MAX)))
+        .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+}
+
+/// Urutan untuk siswa yang ditambahkan ke akhir sebuah kelas.
+pub fn next_order(students: &[Student], class_name: &str) -> u32 {
+    students
+        .iter()
+        .filter(|s| s.class_name == class_name)
+        .filter_map(|s| s.order)
+        .max()
+        .map_or(1, |m| m + 1)
 }
 
 /// Logo bawaan sekolah (Sekolah Lab Undiksha) sebagai data URL PNG.

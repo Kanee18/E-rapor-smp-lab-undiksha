@@ -56,6 +56,9 @@ fn safe_file_name(s: &str) -> String {
 pub struct BackupInfo {
     pub path: String,
     pub file: String,
+    /// Jenjang data di file ini ("" = data lama sebelum ada jenjang).
+    pub level: String,
+    pub school_name: String,
     pub students: usize,
     pub classes: Vec<String>,
     pub academic_year: String,
@@ -90,6 +93,8 @@ pub fn backup_info(path: &Path) -> Result<BackupInfo, String> {
     Ok(BackupInfo {
         path: path.display().to_string(),
         file: path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+        level: data.meta.level.clone(),
+        school_name: data.settings.school_name.clone(),
         students: data.students.len(),
         classes,
         academic_year: data.settings.academic_year.clone(),
@@ -197,7 +202,9 @@ impl Store {
         };
         fs::create_dir_all(&dir).map_err(|e| format!("Folder tujuan tidak bisa dibuat ({}): {e}", dir.display()))?;
         let stamp = timestamp("%Y-%m-%d_%H%M%S");
-        let dest = dir.join(format!("data-{stamp}.json"));
+        // nama file memuat jenjang supaya backup SD/SMP/SMA di satu flashdisk tidak tertukar
+        let level = if self.data.meta.level.is_empty() { String::new() } else { format!("{}-", self.data.meta.level) };
+        let dest = dir.join(format!("data-{level}{stamp}.json"));
         fs::copy(self.data_path(), &dest).map_err(|e| format!("Backup gagal (flashdisk penuh atau terkunci?): {e}"))?;
         // pastikan salinannya utuh
         read_data_file(&dest).map_err(|_| "Backup tersalin tapi tidak bisa dibaca ulang; coba folder lain".to_string())?;
@@ -220,6 +227,8 @@ impl Store {
         incoming.meta.last_external_backup_dir = self.data.meta.last_external_backup_dir.clone();
         incoming.meta.archive_label = None;
         incoming.meta.archived_at = None;
+        // folder menentukan jenjang, bukan isi file
+        incoming.meta.level = self.data.meta.level.clone();
         incoming.version = DATA_VERSION;
         self.data = incoming;
         self.save()?;

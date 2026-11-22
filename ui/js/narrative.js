@@ -29,10 +29,15 @@ export function fillPhrase(text, student, theme, { nameUsed = false } = {}) {
   const pron = g === 'L' ? { they: 'he', their: 'his', them: 'him' }
     : g === 'P' ? { they: 'she', their: 'her', them: 'her' }
       : { they: 'they', their: 'their', them: 'them' };
-  const out = text.replace(/\{(name|they|their|them|theme)\}/gi, (m, key) => {
+  const out = text.replace(/\{(name|they|their|them|theme)\}/gi, (m, key, offset, whole) => {
     const k = key.toLowerCase();
     let v;
-    if (k === 'name') v = nameUsed && known ? pron.they : displayName(student.name);
+    if (k === 'name' && nameUsed && known) {
+      // Posisi objek (langsung setelah sebuah kata, mis. "seeing {name}", "help {name}") → him/her;
+      // awal kalimat atau setelah tanda baca (", {name} will…") → he/she.
+      const before = whole.slice(0, offset).trimEnd();
+      v = before && /[\p{L}]$/u.test(before) ? pron.them : pron.they;
+    } else if (k === 'name') v = displayName(student.name);
     else if (k === 'theme') v = theme || 'the unit';
     else v = pron[k];
     return key[0] === key[0].toUpperCase() ? cap(v) : v;
@@ -97,3 +102,35 @@ export function openPhraseBank(opts) {
   });
 }
 
+
+/** Angka tetap dari teks (supaya draf siswa yang sama selalu sama, tapi beda antarsiswa). */
+function seedOf(text) {
+  let x = 2166136261;
+  for (const ch of String(text)) { x ^= ch.charCodeAt(0); x = Math.imul(x, 16777619) >>> 0; }
+  return x;
+}
+
+/**
+ * Draf narasi offline dari bank kalimat, sesuai predikat Understanding Level:
+ * 2 kalimat sesuai predikat (atau 1 + kalimat umum) + 1 kalimat langkah berikutnya.
+ * Nama dipakai di kalimat pertama, berikutnya kata ganti (he/she) bila jenis kelamin diketahui.
+ * Mengembalikan '' kalau tidak ada predikat atau bank kalimat kosong.
+ */
+export function draftNarrative({ settings, student, projectId, predicate }) {
+  if (!predicate) return '';
+  const bank = settings.narrative_bank || [];
+  const of = (cat) => bank.filter((p) => p.category === cat && p.text.trim());
+  const pred = of(predicate);
+  const general = of('general');
+  const next = of('next');
+  if (!pred.length && !general.length) return '';
+  const seed = seedOf(`${student.id}|${projectId}`);
+  const pick = (list, k) => list[(seed + k * 7919) % list.length];
+  const chosen = [];
+  if (pred.length) chosen.push(pick(pred, 0));
+  const second = pred.length > 1 ? pred.filter((p) => p !== chosen[0]) : general;
+  if (second.length) chosen.push(pick(second, 1));
+  if (next.length) chosen.push(pick(next, 2));
+  const theme = settings.projects.find((pc) => pc.id === projectId)?.theme;
+  return chosen.reduce((text, p, i) => appendSentence(text, fillPhrase(p.text, student, theme, { nameUsed: i > 0 })), '');
+}
