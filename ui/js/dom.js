@@ -147,6 +147,34 @@ export function button(label, { kind = '', iconName, onClick, title, disabled } 
   return h('button', { type: 'button', class: `btn ${kind}`.trim(), onclick: onClick, title, disabled }, iconName ? icon(iconName) : null, label);
 }
 
+/**
+ * Tombol dengan daftar pilihan kecil (menu tarik-turun).
+ * items: [{ label, onClick, kind?: 'danger', hint? }]
+ */
+export function menuButton(label, items, { kind = '', iconName } = {}) {
+  const wrap = h('div', { class: 'menu-wrap' });
+  const list = h('div', { class: 'menu-list', role: 'menu', hidden: true });
+  const close = () => { list.hidden = true; trigger.setAttribute('aria-expanded', 'false'); document.removeEventListener('pointerdown', outside, true); };
+  const outside = (e) => { if (!wrap.contains(e.target)) close(); };
+  const trigger = h('button', {
+    type: 'button', class: `btn ${kind}`.trim(), 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+    onclick: () => {
+      if (!list.hidden) { close(); return; }
+      list.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+      document.addEventListener('pointerdown', outside, true);
+      list.querySelector('button')?.focus();
+    },
+  }, iconName ? icon(iconName) : null, label, icon('down'));
+  list.append(...items.map((it) => h('button', {
+    type: 'button', role: 'menuitem', class: `menu-item ${it.kind || ''}`.trim(),
+    onclick: () => { close(); it.onClick(); },
+  }, h('span', {}, it.label), it.hint ? h('span', { class: 'menu-hint' }, it.hint) : null)));
+  wrap.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !list.hidden) { e.stopPropagation(); close(); trigger.focus(); } });
+  wrap.append(trigger, list);
+  return wrap;
+}
+
 export function link(label, onClick, kind = '') {
   return h('button', { type: 'button', class: `link ${kind}`.trim(), onclick: onClick }, label);
 }
@@ -157,7 +185,14 @@ export function toast(message, kind = 'info', ms = 3500) {
   const box = document.getElementById('toasts');
   const el = h('div', { class: `toast ${kind}`, role: kind === 'error' ? 'alert' : 'status' }, message);
   box.appendChild(el);
-  setTimeout(() => el.remove(), kind === 'error' ? Math.max(ms, 7000) : ms);
+  // Popover = lapisan paling atas: pesan tetap terbaca di atas jendela dialog (showModal) yang sedang terbuka.
+  if (box.showPopover) {
+    try { if (box.matches(':popover-open')) box.hidePopover(); box.showPopover(); } catch { /* tetap tampil sebagai elemen biasa */ }
+  }
+  setTimeout(() => {
+    el.remove();
+    if (!box.childElementCount && box.hidePopover) { try { box.hidePopover(); } catch { /* sudah tertutup */ } }
+  }, kind === 'error' ? Math.max(ms, 7000) : ms);
 }
 
 export function errorText(e) {

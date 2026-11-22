@@ -156,6 +156,9 @@ main.scrolled .page-head { box-shadow: 0 1px 0 var(--line), 0 8px 16px -14px rgb
 .page-head h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.03em; }
 .page-head .lede { margin-top: 8px; color: var(--text-2); max-width: 62ch; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+/* judul boleh menyempit (teks turun baris) sebelum tombol-tombol terpecah dua baris */
+.page-head > div:first-child { flex: 1 1 340px; min-width: 0; }
+.page-head > .actions { flex: 0 1 auto; }
 .content {
   flex: 1 1 auto; min-height: 0; overflow: auto;
   padding: 4px 44px 56px; display: flex; flex-direction: column; gap: 28px;
@@ -220,6 +223,7 @@ label.field > .lbl { font-size: 13px; font-weight: 600; color: var(--text); }
 .check { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; }
 input[type=checkbox], input[type=radio] { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
 .search { max-width: 260px; }
+.toolbar .tools .search { width: 240px; flex: none; }
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 22px; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 22px; }
 
@@ -568,6 +572,22 @@ table.edit input:focus, table.edit textarea:focus, table.edit select:focus { bac
 table.edit textarea { min-height: 36px; }
 table.edit .tight { width: 1%; white-space: nowrap; padding-top: 9px; }
 .add-row { padding: 10px 14px; border-top: 1px solid var(--line); }
+/* daftar siswa yang diisi langsung di aplikasi */
+.roster-head { display: grid; grid-template-columns: 220px 1fr; gap: 18px; align-items: end; }
+.roster-head .hint { margin: 0 0 4px; }
+.roster .sheet { overflow: visible; }
+table.roster-table td { padding: 3px 6px; vertical-align: middle; }
+table.roster-table td.idx { color: var(--text-3); width: 44px; text-align: right; padding-right: 10px; font-variant-numeric: tabular-nums; }
+table.roster-table input, table.roster-table select { width: 100%; }
+table.roster-table .w-num { width: 120px; }
+table.roster-table .w-nisn { width: 140px; }
+table.roster-table .w-lp { width: 74px; }
+table.roster-table .w-num input, table.roster-table .w-nisn input { font-variant-numeric: tabular-nums; }
+table.roster-table .row-tools { width: 1%; white-space: nowrap; text-align: right; }
+table.roster-table tr.removed input, table.roster-table tr.removed select { text-decoration: line-through; color: var(--danger); opacity: .7; }
+table.roster-table tr.removed td { background: #FDF6F5; }
+table.roster-table thead th { position: sticky; top: -12px; z-index: 1; }
+.add-row .muted { margin-left: 8px; }
 .save-bar {
   position: sticky; bottom: 18px; z-index: 6;
   display: flex; align-items: center; gap: 12px; max-width: 920px;
@@ -625,6 +645,8 @@ dialog.modal::backdrop { background: rgba(25, 28, 35, .28); backdrop-filter: blu
 .modal-body { outline: none; padding: 12px 26px 22px; max-height: 66vh; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
 .modal-foot { padding: 14px 26px 18px; display: flex; justify-content: flex-end; gap: 8px; }
 .toasts { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 50; }
+.toasts[popover] { inset: auto auto 24px 50%; margin: 0; padding: 0; border: 0; background: transparent; overflow: visible; color: inherit; width: max-content; max-width: calc(100vw - 48px); }
+.toasts[popover]:not(:popover-open) { display: none; }
 .toast { display: flex; align-items: center; gap: 10px; background: var(--text); color: #fff; padding: 10px 16px; border-radius: 12px; max-width: 520px; line-height: 1.45; box-shadow: var(--shadow-lg); animation: pop .2s ease-out; font-weight: 500; }
 .toast::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #8EA2F0; flex: none; }
 .toast.ok::before { background: #5CD399; }
@@ -753,3 +775,18 @@ body.locked > aside, body.locked > main { visibility: hidden; }
 .level-switch .lv:hover { color: var(--text); }
 .level-switch .lv.on { background: var(--panel); color: var(--accent-2); box-shadow: var(--shadow-xs), 0 0 0 1px rgba(20, 24, 35, .06); }
 .level-switch .lv:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* menu tarik-turun kecil (Kelola kelas) */
+.menu-wrap { position: relative; display: inline-flex; }
+.menu-wrap > .btn svg:last-child { width: 14px; height: 14px; margin-left: 2px; margin-right: -4px; opacity: .6; }
+.menu-list {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; min-width: 250px;
+  display: flex; flex-direction: column; padding: 6px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-lg);
+}
+.menu-list[hidden] { display: none; }
+.menu-item { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-weight: 500; }
+.menu-item:hover, .menu-item:focus-visible { background: var(--hover); }
+.menu-item.danger { color: var(--danger); }
+.menu-hint { font-size: 12px; font-weight: 400; color: var(--text-3); }
+.class-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

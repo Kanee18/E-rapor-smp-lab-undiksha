@@ -1,35 +1,47 @@
-// Data siswa: impor Dapodik, tambah/ubah/hapus siswa.
+// Data siswa: buat daftar kelas langsung di aplikasi, impor dari Excel, ekspor ke Excel, tambah/ubah/hapus siswa.
 import { api } from '../api.js';
-import { h, avatar, button, levelOfClass, swapIn, classTabs, confirmBox, emptyState, errorText, link, openModal, searchBox, toast, toolbar } from '../dom.js';
+import { h, avatar, button, menuButton, levelOfClass, swapIn, classTabs, confirmBox, emptyState, errorText, link, openModal, searchBox, toast, toolbar } from '../dom.js';
 import { importWizard } from '../import-wizard.js';
+import { rosterEditor } from '../roster-editor.js';
 
 export async function render(ctx) {
   const { app, content, actions, setTitle } = ctx;
-  setTitle('Data siswa', 'Dari ekspor Dapodik atau daftar siswa Excel lain (SD, SMP, SMA). Yang disimpan hanya nama, NIS, NISN, jenis kelamin, dan kelas.');
+  setTitle('Data siswa', 'Isi langsung di aplikasi, atau impor dari Dapodik / daftar siswa Excel (SD, SMP, SMA). Yang disimpan hanya nama, NIS, NISN, jenis kelamin, dan kelas.');
   const rerender = async () => { await app.reload(); content.replaceChildren(); actions.replaceChildren(); await render(ctx); };
+  const openRoster = (cls) => rosterEditor(app, cls, (saved) => { app.selectedClass = saved; rerender(); });
 
   const classes = app.classes();
+  let filter = app.selectedClass && classes.includes(app.selectedClass) ? app.selectedClass : null;
   actions.append(
-    ...(classes.length ? [button('Pindahkan kelas…', { onClick: () => moveClassesDialog(app, rerender) })] : []),
-    ...(classes.length ? [button('Hapus kelas', { kind: 'danger', onClick: () => deleteClassesDialog(app, rerender) })] : []),
-    button('Tambah siswa', { onClick: () => editStudent(app, null, rerender) }),
+    ...(classes.length ? [menuButton('Kelola kelas', [
+      { label: 'Ekspor ke Excel…', hint: 'Simpan daftar siswa, bisa diimpor lagi', onClick: () => exportStudents(app, filter) },
+      { label: 'Pindahkan ke jenjang lain…', hint: 'Mis. kelas SD yang masuk data SMP', onClick: () => moveClassesDialog(app, rerender) },
+      { label: 'Hapus kelas…', kind: 'danger', hint: 'Siswa, nilai, dan isian rapornya', onClick: () => deleteClassesDialog(app, rerender) },
+    ])] : []),
+    button('Buat kelas baru', { iconName: 'plus', onClick: () => openRoster(null) }),
     button('Impor dari Excel', { kind: 'primary', onClick: () => importWizard('students', rerender, app) }),
   );
 
   if (!app.data.students.length) {
     content.appendChild(emptyState('Belum ada siswa',
-      'Pilih file ekspor Dapodik atau daftar siswa Excel (.xls/.xlsx) dari guru. Kolom Nama, NIS/NISN, L/P, dan kelas ditebak otomatis dan bisa dikoreksi sebelum diimpor.',
-      button('Impor dari Excel', { kind: 'primary', onClick: () => importWizard('students', rerender, app) })));
+      'Ketik daftar siswa langsung di aplikasi (bisa juga salin-tempel dari Excel), atau impor file ekspor Dapodik / daftar siswa Excel (.xls/.xlsx). Kolom Nama, NIS/NISN, L/P, dan kelas ditebak otomatis.',
+      h('div', { class: 'row', style: { display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' } },
+        button('Buat daftar siswa', { kind: 'primary', iconName: 'pen', onClick: () => openRoster(null) }),
+        button('Impor dari Excel', { onClick: () => importWizard('students', rerender, app) }))));
     return;
   }
 
-  let filter = app.selectedClass && classes.includes(app.selectedClass) ? app.selectedClass : null;
   let query = '';
   const tabsBox = h('div', {});
   const tableBox = h('div', { class: 'sheet scroll' });
+  const classTools = h('div', {});
 
   function draw() {
     tabsBox.replaceChildren(classTabs(classes, filter, (c) => { filter = c; if (c) app.selectedClass = c; draw(); swapIn(tableBox); }, { counts: app.classCounts() }));
+    classTools.replaceChildren(
+      filter
+        ? button(`Edit daftar ${filter}`, { iconName: 'pen', title: 'Tambah, ubah, hapus, dan atur urutan siswa kelas ini', onClick: () => openRoster(filter) })
+        : button('Tambah siswa', { iconName: 'plus', onClick: () => editStudent(app, null, rerender) }));
     const list = app.data.students
       .filter((s) => (!filter || s.class_name === filter) && (!query || s.name.toLowerCase().includes(query) || s.nis.includes(query) || s.nisn.includes(query)))
       // urutan sama dengan file Excel saat diimpor (nomor absen); yang belum punya urutan di belakang
@@ -56,7 +68,42 @@ export async function render(ctx) {
     tableBox.scrollTop = 0;
   }
   draw();
-  content.append(toolbar(tabsBox, searchBox('Cari nama, NIS, atau NISN', (q) => { query = q; draw(); })), tableBox);
+  content.append(toolbar(h('div', { class: 'class-tools' }, tabsBox, classTools), searchBox('Cari nama, NIS, atau NISN', (q) => { query = q; draw(); })), tableBox);
+}
+
+/** Simpan daftar siswa ke Excel; file ini bisa diimpor lagi (laptop lain, jenjang lain). */
+async function exportStudents(app, current) {
+  const classes = app.classes();
+  const chosen = new Set(current && classes.includes(current) ? [current] : classes);
+  const counts = app.classCounts();
+  const modal = openModal({
+    title: 'Ekspor data siswa ke Excel',
+    wide: classes.length > 6,
+    body: h('div', { class: 'stack' },
+      h('p', {}, 'Hasilnya file Excel berisi No, Nama, NIS, NISN, L/P, dan Kelas sesuai urutan absen. File ini bisa dibuka/diedit di Excel dan diimpor lagi lewat ',
+        h('b', {}, 'Impor dari Excel'), ', misalnya di laptop guru lain.'),
+      h('div', { class: 'grid-3' }, classes.map((c) => h('label', { class: 'check' },
+        h('input', { type: 'checkbox', checked: chosen.has(c), onchange: (e) => (e.target.checked ? chosen.add(c) : chosen.delete(c)) }),
+        `${c} `, h('span', { class: 'muted small' }, `(${counts[c] || 0} siswa)`))))),
+    actions: [
+      { label: 'Batal', kind: 'quiet', onClick: (c) => c() },
+      { label: 'Simpan Excel…', kind: 'primary', onClick: async () => {
+        const list = classes.filter((c) => chosen.has(c));
+        if (!list.length) { toast('Pilih minimal satu kelas', 'error'); return; }
+        try {
+          const saved = await api.saveStudentList(list.length === classes.length ? [] : list);
+          if (!saved) return;
+          modal.setBody(h('div', { class: 'stack' },
+            h('p', { class: 'note ok' }, h('b', {}, 'Data siswa tersimpan. '), `${saved.students} siswa.`),
+            h('p', { class: 'small tabular' }, saved.path)));
+          modal.setActions([
+            { label: 'Tampilkan di folder', onClick: () => api.revealPath(saved.path).catch((e) => toast(errorText(e), 'error')) },
+            { label: 'Selesai', kind: 'primary', onClick: (c) => c() },
+          ]);
+        } catch (e) { toast(errorText(e), 'error'); }
+      } },
+    ],
+  });
 }
 
 function editStudent(app, s, onSaved) {

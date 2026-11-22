@@ -9,8 +9,12 @@ dalam format Excel yang sudah biasa dipakai, atau mengisinya langsung di aplikas
 
 ## Alur kerja
 
-1. **Data Siswa**: impor dari ekspor Dapodik (`.xls`/`.xlsx`). Kelas IX dipilih otomatis.
-   Yang disimpan hanya nama, NIS, NISN, jenis kelamin, dan kelas.
+1. **Data Siswa**: impor dari ekspor Dapodik (`.xls`/`.xlsx`), **atau ketik langsung di aplikasi**
+   (*Buat kelas baru* / *Edit daftar <kelas>*): tabel seperti Excel, Enter = baris berikutnya,
+   salin-tempel beberapa baris/kolom dari Excel, urutan baris = nomor absen (geser ↑/↓), hapus
+   siswa ditandai dulu lalu dikonfirmasi (dibackup otomatis). *Kelola kelas → Ekspor ke Excel*
+   menyimpan daftar siswa (No, Nama, NIS, NISN, L/P, Kelas) yang bisa diimpor lagi, mis. di laptop
+   guru lain (`src-tauri/src/roster.rs`). Yang disimpan hanya nama, NIS, NISN, jenis kelamin, dan kelas.
 2. **Nilai Mapel**: impor rekap nilai (kolom `NAMA SISWA` + baris `PH`/`PTS`, seperti sheet
    *Data Nilai Kls 7 8,9*). Nama yang disingkat atau salah ketik dicocokkan otomatis
    dan dilaporkan untuk dicek. Nilai juga bisa diedit langsung di tabel.
@@ -119,6 +123,7 @@ src-tauri/src/
   importer.rs   baca Excel (calamine), deteksi sheet & kelas, gabung ke data
   forms.rs      form Excel untuk fasilitator (rust_xlsxwriter) + impor kembali
   leger.rs      leger kelas + rekap predikat ke Excel
+  roster.rs     daftar kelas yang diisi di aplikasi + ekspor daftar siswa ke Excel
   pdf.rs        PDF per siswa lewat Edge headless
   view.rs       hasil hitungan per siswa (dipakai layar & rapor)
   report.rs     render rapor HTML (minijinja) dari templates/report.html

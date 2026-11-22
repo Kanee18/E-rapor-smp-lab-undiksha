@@ -13,6 +13,7 @@ pub mod model;
 pub mod names;
 pub mod pdf;
 pub mod report;
+pub mod roster;
 pub mod security;
 pub mod student_flex;
 pub mod store;
@@ -84,6 +85,8 @@ pub fn run() {
             commands::list_archives,
             commands::start_new_term,
             commands::save_leger,
+            commands::save_class_roster,
+            commands::save_student_list,
             commands::pick_folder,
             commands::export_pdfs,
             commands::pick_image_file,

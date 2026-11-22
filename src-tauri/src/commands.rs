@@ -258,6 +258,60 @@ pub fn delete_student(state: State<'_, AppState>, id: String) -> Result<(), Stri
     store.save()
 }
 
+/// Simpan daftar satu kelas yang dibuat/diubah langsung di aplikasi.
+/// Kalau ada siswa lama yang dihapus, data dibackup dulu.
+#[tauri::command(rename_all = "snake_case")]
+pub fn save_class_roster(
+    state: State<'_, AppState>,
+    original_class: Option<String>,
+    class_name: String,
+    rows: Vec<crate::roster::RosterRow>,
+    remove: Vec<String>,
+) -> Result<crate::roster::RosterResult, String> {
+    let mut store = lock(&state)?;
+    let mut data = store.data.clone();
+    let result = crate::roster::apply_roster(&mut data, original_class.as_deref(), &class_name, rows, &remove)?;
+    if result.removed > 0 && store.data_path().exists() {
+        store.copy_to_backup("sebelum-edit-daftar-kelas")?;
+    }
+    store.data = data;
+    store.save()?;
+    Ok(result)
+}
+
+/// Ekspor daftar siswa ke Excel (bisa diimpor balik). `classes` kosong = semua kelas.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn save_student_list(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    classes: Vec<String>,
+) -> Result<Option<FormSaved>, String> {
+    let level = current_level(&state);
+    let (data, dir) = {
+        let store = lock(&state)?;
+        (store.data.clone(), store.dir.join("data siswa"))
+    };
+    if !data.students.iter().any(|s| classes.is_empty() || classes.contains(&s.class_name)) {
+        return Err("Tidak ada siswa untuk diekspor".into());
+    }
+    let _ = std::fs::create_dir_all(&dir);
+    let picked = app
+        .dialog()
+        .file()
+        .set_title("Simpan data siswa ke Excel")
+        .set_directory(&dir)
+        .set_file_name(crate::roster::suggested_file_name(&data, &classes, &level))
+        .add_filter("File Excel", &["xlsx"])
+        .blocking_save_file();
+    let Some(fp) = picked else { return Ok(None) };
+    let mut path = fp.into_path().map_err(|e| e.to_string())?;
+    if path.extension().is_none() {
+        path.set_extension("xlsx");
+    }
+    let students = crate::roster::write_students(&data, &classes, &level, &path)?;
+    Ok(Some(FormSaved { path: path.display().to_string(), students }))
+}
+
 #[derive(Serialize)]
 pub struct DeleteClassesResult {
     students_deleted: usize,

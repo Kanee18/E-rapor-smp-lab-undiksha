@@ -14,6 +14,9 @@ export const api = {
   saveStudentIdentity: (student) => invoke('save_student_identity', { student }),
   deleteStudent: (id) => invoke('delete_student', { id }),
   deleteClasses: (classes) => invoke('delete_classes', { classes }),
+  saveClassRoster: (originalClass, className, rows, remove) =>
+    invoke('save_class_roster', { original_class: originalClass, class_name: className, rows, remove }),
+  saveStudentList: (classes) => invoke('save_student_list', { classes }),
   setScore: (id, key, ph, pts, manual) => invoke('set_score', { id, key, ph, pts, manual }),
   saveReportFields: (id, fields) => invoke('save_report_fields', { id, fields }),
   setEffectiveDays: (days) => invoke('set_effective_days', { days }),
