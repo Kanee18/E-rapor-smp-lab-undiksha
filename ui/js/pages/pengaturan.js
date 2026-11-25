@@ -1,9 +1,10 @@
 // Pengaturan: identitas rapor, rumus & predikat, mapel, ATL, proyek, wali kelas, desain.
 // Perubahan baru tersimpan setelah klik "Simpan" di bar bawah.
 import { api } from '../api.js';
-import { h, autoGrow, button, confirmBox, debounce, errorText, icon, link, toast } from '../dom.js';
+import { h, autoGrow, button, confirmBox, debounce, errorText, icon, link, rankMap, stamp, toast } from '../dom.js';
 import { PHRASE_CATEGORIES } from '../narrative.js';
 import { openSignatureEditor } from '../signature.js';
+import { atlExamplesFor } from '../atl-examples.js';
 
 const newId = (prefix) => `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
@@ -91,6 +92,162 @@ export async function render(ctx) {
         addLabel ? h('div', { class: 'add-row' }, link(`+ ${addLabel}`, () => { items.push(make()); markDirty(); drawTable(); })) : '');
     };
     drawTable();
+    return wrap;
+  }
+
+  /** Editor ATL: per atribut ada indikator umum + indikator per predikat (dari Rumus & predikat). */
+  function atlEditor(d) {
+    const wrap = h('div', { class: 'stack', style: { gap: '10px' } });
+    const open = new Set();
+    const bands = () => [...d.grading.bands].filter((b) => b.code.trim()).sort((a, b) => b.min - a.min);
+    const filled = (a) => bands().filter((b) => (a.levels?.[b.code] || '').trim()).length;
+    const countText = (a) => `${filled(a)}/${bands().length} predikat punya indikator sendiri`;
+    const drawAtl = () => {
+      const move = (i, dir) => { [d.atl[i + dir], d.atl[i]] = [d.atl[i], d.atl[i + dir]]; markDirty(); drawAtl(); };
+      const fillExamples = () => {
+        let n = 0;
+        for (const a of d.atl) {
+          const ex = atlExamplesFor(a);
+          if (!ex) continue;
+          a.levels = a.levels || {};
+          for (const b of bands()) {
+            if (!(a.levels[b.code] || '').trim() && ex[b.code]) { a.levels[b.code] = ex[b.code]; n++; }
+          }
+        }
+        if (!n) { toast('Tidak ada yang diisi: indikator per predikat sudah terisi, atau kode predikat bukan EE/ME/AE/BE', 'error', 6000); return; }
+        markDirty();
+        drawAtl();
+        toast(`${n} indikator contoh diisi (yang sudah terisi tidak diubah). Sesuaikan lalu klik Simpan.`, 'ok', 6000);
+      };
+      wrap.replaceChildren(
+        h('div', { class: 'row', style: { display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' } },
+          button('Isi contoh indikator EE/ME/AE/BE', { kind: 'sm', onClick: fillExamples }),
+          h('span', { class: 'hint' }, 'Contoh bahasa Inggris untuk atribut bawaan; hanya mengisi yang masih kosong.')),
+        ...d.atl.map((a, i) => {
+          a.levels = a.levels || {};
+          const count = h('span', { class: 'small muted' }, countText(a));
+          const nameEl = h('span', { class: 'atl-name' }, a.name || '(atribut baru)');
+          const card = h('details', {
+            class: 'atl-card', open: open.has(a.id),
+            ontoggle: (e) => { if (e.target.open) open.add(a.id); else open.delete(a.id); },
+          },
+          h('summary', {},
+            nameEl, count, h('span', { class: 'spacer' }),
+            h('span', { class: 'atl-tools' },
+              h('button', { type: 'button', class: 'icon-btn', title: 'Naik', disabled: i === 0, onclick: (e) => { e.preventDefault(); move(i, -1); } }, icon('up')),
+              h('button', { type: 'button', class: 'icon-btn', title: 'Turun', disabled: i === d.atl.length - 1, onclick: (e) => { e.preventDefault(); move(i, 1); } }, icon('down')),
+              h('button', { type: 'button', class: 'icon-btn', title: 'Hapus atribut', onclick: async (e) => {
+                e.preventDefault();
+                if (!(await confirmBox(`Hapus atribut ${a.name || 'ini'}? Penilaian siswa untuk atribut ini tidak dicetak lagi.`, { ok: 'Hapus', danger: true }))) return;
+                d.atl.splice(i, 1); markDirty(); drawAtl();
+              } }, icon('trash')))),
+          h('div', { class: 'atl-body' },
+            h('div', { class: 'grid-2' },
+              h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Nama atribut'),
+                h('input', { value: a.name, oninput: (e) => { a.name = e.target.value; nameEl.textContent = a.name || '(atribut baru)'; markDirty(); } })),
+              h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Indikator umum (dipakai kalau teks predikat kosong)'),
+                autoGrow(h('textarea', { rows: 1, value: a.indicator, oninput: (e) => { a.indicator = e.target.value; markDirty(); } })))),
+            h('div', { class: 'atl-levels' }, bands().map((b) => h('label', { class: 'atl-level' },
+              h('span', { class: 'atl-code', title: b.label }, stamp({ status: 'ok', code: b.code }, rankMap(d))),
+              autoGrow(h('textarea', {
+                rows: 1, value: a.levels[b.code] || '', placeholder: `Indikator untuk ${b.code} (${b.label || 'predikat'}); kosong = pakai indikator umum`,
+                oninput: (e) => { a.levels[b.code] = e.target.value; count.textContent = countText(a); markDirty(); },
+              })))))));
+          return card;
+        }),
+        h('div', {}, link('+ Tambah atribut', () => {
+          const id = newId('a');
+          d.atl.push({ id, name: '', indicator: '', levels: {} });
+          open.add(id);
+          markDirty();
+          drawAtl();
+        })));
+    };
+    drawAtl();
+    return wrap;
+  }
+
+  /** Kotak identitas siswa di atas rapor: tampil/sembunyi, label bebas, urutan, bentuk isian. */
+  function infoEditor(d) {
+    const DEFAULTS = [
+      { key: 'name', label: 'Student Name', format: '', source: 'Nama siswa' },
+      { key: 'class', label: 'Grade / Class', format: 'grade', source: 'Kelas' },
+      { key: 'student_id', label: 'Student ID', format: 'both', source: 'NIS / NISN' },
+      { key: 'homeroom', label: 'Homeroom Teacher', format: '', source: 'Wali kelas' },
+      { key: 'academic_year', label: 'Academic Year', format: '', source: 'Tahun ajaran' },
+      { key: 'attendance', label: 'Attendance', format: '', source: 'Kehadiran' },
+    ];
+    const FORMATS = {
+      class: [['grade', 'Grade 9 (IX-1)'], ['class', 'IX-1 saja']],
+      student_id: [['both', 'NIS dan NISN'], ['nis', 'NIS saja'], ['nisn', 'NISN saja']],
+    };
+    const def = (key) => DEFAULTS.find((x) => x.key === key);
+    // lengkapi daftar lama: baris yang belum ada ditambahkan di akhir
+    const fresh = () => DEFAULTS.map(({ key, label, format }) => ({ key, label, format, show: true }));
+    if (!Array.isArray(d.info_fields)) d.info_fields = fresh();
+    d.info_fields = d.info_fields.filter((f, i, a) => def(f.key) && a.findIndex((x) => x.key === f.key) === i);
+    for (const x of fresh()) if (!d.info_fields.some((f) => f.key === x.key)) d.info_fields.push(x);
+
+    // contoh isian untuk pratinjau: siswa pertama kalau ada
+    const s = app.data.students[0] || { name: 'Made Dewi Lestari', class_name: 'IX-1', nis: '1234', nisn: '0098765432', attendance: '98% (Present)' };
+    const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10, XI: 11, XII: 12 };
+    const gradeOf = (c) => { const g = ROMAN[c.split('-')[0].trim().toUpperCase()] || Number(c.split('-')[0]); return g ? `Grade ${g} (${c})` : c; };
+    const homeroom = d.classes.find((c) => c.name === s.class_name)?.homeroom_teacher || '';
+    const valueOf = (f) => {
+      const nis = (s.nis || '').trim(), nisn = (s.nisn || '').trim();
+      const v = {
+        name: s.name,
+        class: f.format === 'class' ? s.class_name : gradeOf(s.class_name || ''),
+        student_id: f.format === 'nis' ? nis : f.format === 'nisn' ? nisn
+          : [nis, nisn && `NISN ${nisn}`].filter(Boolean).join(' / '),
+        homeroom,
+        academic_year: d.academic_year,
+        attendance: s.attendance,
+      }[f.key];
+      return (v || '').trim() || '—';
+    };
+    const labelOf = (f) => (f.label || '').trim().replace(/[:：]+$/, '').trim() || def(f.key).label;
+
+    const wrap = h('div', { class: 'stack', style: { gap: '14px' } });
+    const draw = () => {
+      const items = d.info_fields;
+      const move = (i, k) => { [items[i + k], items[i]] = [items[i], items[i + k]]; markDirty(); draw(); };
+      wrap.replaceChildren(
+        h('div', { class: 'sheet' },
+          h('table', { class: 'ledger edit info-edit' },
+            h('thead', {}, h('tr', {},
+              h('th', { style: { width: '74px' } }, 'Tampil'),
+              h('th', { style: { width: '150px' } }, 'Isinya'),
+              h('th', {}, 'Tulisan label di rapor'),
+              h('th', { style: { width: '190px' } }, 'Bentuk isian'),
+              h('th', {}, ''))),
+            h('tbody', {}, items.map((f, i) => h('tr', { class: f.show ? '' : 'off' },
+              h('td', { class: 'center' }, h('input', { type: 'checkbox', checked: f.show, 'aria-label': `Tampilkan ${def(f.key).source}`,
+                onchange: (e) => { f.show = e.target.checked; markDirty(); draw(); } })),
+              h('td', {}, h('div', { class: 'name', style: { padding: '5px 0' } }, def(f.key).source)),
+              h('td', {}, h('input', { value: f.label ?? '', placeholder: def(f.key).label, 'aria-label': `Label ${def(f.key).source}`,
+                oninput: (e) => { f.label = e.target.value; markDirty(); preview(); } })),
+              h('td', {}, FORMATS[f.key]
+                ? h('select', { 'aria-label': `Bentuk ${def(f.key).source}`, onchange: (e) => { f.format = e.target.value; markDirty(); preview(); } },
+                  FORMATS[f.key].map(([v, t]) => h('option', { value: v, selected: (f.format || def(f.key).format) === v }, t)))
+                : h('span', { class: 'muted small', style: { display: 'block', padding: '6px 8px' } }, '—')),
+              h('td', { class: 'tight' },
+                h('button', { type: 'button', class: 'icon-btn', title: 'Naik', 'aria-label': 'Naik', disabled: i === 0, onclick: () => move(i, -1) }, icon('up')),
+                h('button', { type: 'button', class: 'icon-btn', title: 'Turun', 'aria-label': 'Turun', disabled: i === items.length - 1, onclick: () => move(i, 1) }, icon('down')))))))),
+        h('div', { class: 'info-preview-wrap' },
+          h('div', { class: 'small muted' }, `Pratinjau${app.data.students[0] ? ` (${s.name})` : ' (contoh)'}:`),
+          previewBox),
+        h('div', {}, link('Kembalikan ke bawaan', () => { d.info_fields = fresh(); markDirty(); draw(); })));
+      preview();
+    };
+    const previewBox = h('div', { class: 'info-preview' });
+    const preview = () => {
+      const rows = d.info_fields.filter((f) => f.show);
+      previewBox.replaceChildren(...(rows.length
+        ? rows.map((f) => h('div', {}, h('b', {}, `${labelOf(f)}:`), ' ', valueOf(f)))
+        : [h('span', { class: 'muted' }, 'Semua baris disembunyikan: kotak identitas tidak dicetak.')]));
+    };
+    draw();
     return wrap;
   }
 
@@ -258,6 +415,10 @@ export async function render(ctx) {
                 .map(([v, t]) => h('option', { value: v, selected: d.paper_size === v }, t)))),
           h('div', { style: { alignSelf: 'end', paddingBottom: '6px' } }, check('Tampilkan angka di samping predikat mapel, mis. "ME (92)"', d, 'show_numeric_score')))),
 
+      set('identitas-siswa', 'Kotak identitas siswa',
+        'Baris-baris di kotak abu-abu bagian atas rapor. Tulisan labelnya bebas diganti (mis. "Student ID" menjadi "NISN" atau "Nomor Induk"), baris yang tidak dipakai bisa disembunyikan dengan menghapus centang Tampil, dan urutannya bisa diubah dengan tombol panah.',
+        infoEditor(d)),
+
       set('penilaian', 'Rumus & predikat',
         'Nilai akhir mapel = rata-rata berbobot PH dan PTS. Predikat ditentukan dari batas bawah: nilai ≥ batas bawah EE menjadi EE, dan seterusnya. Nilai di bawah predikat terendah tetap memakai predikat terendah tapi ditandai. Rentangnya dicetak sebagai keterangan di rapor.',
         h('div', { class: 'grid-3', style: { marginBottom: '16px' } },
@@ -284,11 +445,9 @@ export async function render(ctx) {
           ? h('p', { class: 'hint', style: { marginTop: '8px' } }, `Kolom yang sudah diimpor: ${app.data.score_columns.join(', ')}.`)
           : null),
 
-      set('atl', 'ATL & Learner Profile', 'Atribut dan indikator di tabel bagian 1. Penilaiannya diisi per siswa di Isi rapor.',
-        listEditor(d.atl, [
-          { key: 'name', label: 'Atribut', width: '220px' },
-          { key: 'indicator', label: 'Indikator', type: 'textarea' },
-        ], { addLabel: 'Tambah atribut', make: () => ({ id: newId('a'), name: '', indicator: '' }) })),
+      set('atl', 'ATL & Learner Profile',
+        'Atribut di tabel bagian 1 rapor. Tiap predikat (EE, ME, AE, BE) boleh punya indikator sendiri: yang tercetak di rapor adalah teks sesuai predikat siswa. Predikat yang teksnya kosong memakai indikator umum.',
+        atlEditor(d)),
 
       set('proyek', 'Proyek (UOI)', 'Tema, central idea, dan lines of inquiry (satu baris = satu poin). Kolom fasilitator hanya catatan, tidak dicetak.',
         listEditor(d.projects, [

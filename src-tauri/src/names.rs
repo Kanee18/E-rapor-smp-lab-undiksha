@@ -73,6 +73,12 @@ fn abbreviation_match(a: &[&str], b: &[&str]) -> bool {
     used
 }
 
+/// Nama dipendekkan: minimal 2 kata, dan semua katanya = kata-kata AWAL nama lengkap
+/// ("Luh Sari" → "Luh Sari Dewi") atau kata-kata AKHIR-nya ("Ayu Lestari" → "I Made Ayu Lestari").
+fn shortened_match(q: &[&str], full: &[&str]) -> bool {
+    q.len() >= 2 && q.len() < full.len() && (full.starts_with(q) || full.ends_with(q))
+}
+
 fn similarity(a: &str, b: &str) -> (f64, usize) {
     let d = levenshtein(a, b);
     let m = a.chars().count().max(b.chars().count());
@@ -116,6 +122,23 @@ pub fn match_names(queries: &[String], candidates: &[String]) -> Vec<Option<(usi
         if let [only] = hits[..] {
             taken[only] = true;
             result[qi] = Some((only, MatchKind::Abbreviation));
+        }
+    }
+
+    // Tahap 2b: nama dipendekkan (kata depan/belakang dihilangkan), harus satu-satunya kandidat.
+    for qi in 0..qn.len() {
+        if result[qi].is_some() || qn[qi].is_empty() {
+            continue;
+        }
+        let qt: Vec<&str> = qn[qi].split(' ').collect();
+        let hits: Vec<usize> = (0..cn.len())
+            .filter(|&ci| shortened_match(&qt, &cn[ci].split(' ').collect::<Vec<_>>()))
+            .collect();
+        if let [only] = hits[..] {
+            if !taken[only] {
+                taken[only] = true;
+                result[qi] = Some((only, MatchKind::Abbreviation));
+            }
         }
     }
 
@@ -187,6 +210,16 @@ mod tests {
         assert_eq!(r[2], Some((1, MatchKind::Similar)));
         assert_eq!(r[3], Some((2, MatchKind::Similar)));
         assert_eq!(r[4], Some((0, MatchKind::Exact)));
+    }
+
+    #[test]
+    fn shortened_names_match_only_when_unique() {
+        let cand = s(&["Luh Sari Dewi", "I Made Ayu Lestari", "Putu Ayu Lestari", "Kadek Bayu"]);
+        let r = match_names(&s(&["LUH SARI", "MADE AYU LESTARI", "AYU LESTARI", "BAYU"]), &cand);
+        assert_eq!(r[0], Some((0, MatchKind::Abbreviation)));
+        assert_eq!(r[1], Some((1, MatchKind::Abbreviation)));
+        assert_eq!(r[2], None, "dua siswa bernama ...Ayu Lestari: jangan menebak");
+        assert_eq!(r[3], None, "satu kata saja terlalu umum");
     }
 
     #[test]

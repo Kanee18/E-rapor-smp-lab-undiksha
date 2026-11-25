@@ -2,7 +2,7 @@
 // tempel screenshot (Ctrl+V), atau gambar langsung dengan mouse/touchpad/pen.
 // Hasil akhir: PNG berlatar transparan, dipotong rapat, tinggi maks. 200 px.
 import { api } from './api.js';
-import { h, errorText, openModal, toast } from './dom.js';
+import { h, errorText, isMac, openModal, toast } from './dom.js';
 
 const MAX_WORK = 1400; // sisi terpanjang saat mengolah foto (cukup tajam, tetap cepat)
 const OUT_H = 200;
@@ -324,7 +324,7 @@ export function openSignatureEditor({ role, name, title, current = '', onSave })
               h('button', { type: 'button', class: 'btn sm quiet', onclick: pickFile }, 'Ganti foto…'))))
         : h('div', { class: 'sig-drop' },
           h('button', { type: 'button', class: 'btn primary', onclick: pickFile }, 'Pilih foto atau gambar…'),
-          h('p', { class: 'small muted' }, 'atau tekan ', h('kbd', {}, 'Ctrl'), '+', h('kbd', {}, 'V'), ' untuk menempel screenshot'),
+          h('p', { class: 'small muted' }, 'atau tekan ', h('kbd', {}, isMac ? '⌘' : 'Ctrl'), isMac ? '' : '+', h('kbd', {}, 'V'), ' untuk menempel screenshot'),
           h('ul', { class: 'hint' },
             h('li', {}, 'Tanda tangan di kertas putih polos dengan pulpen hitam/biru.'),
             h('li', {}, 'Foto dari atas, cahaya terang, tanda tangan memenuhi sebagian besar foto.'),

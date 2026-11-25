@@ -10,15 +10,22 @@ dalam format Excel yang sudah biasa dipakai, atau mengisinya langsung di aplikas
 ## Alur kerja
 
 1. **Data Siswa**: impor dari ekspor Dapodik (`.xls`/`.xlsx`), **atau ketik langsung di aplikasi**
-   (*Buat kelas baru* / *Edit daftar <kelas>*): tabel seperti Excel, Enter = baris berikutnya,
-   salin-tempel beberapa baris/kolom dari Excel, urutan baris = nomor absen (geser ↑/↓), hapus
-   siswa ditandai dulu lalu dikonfirmasi (dibackup otomatis). *Kelola kelas → Ekspor ke Excel*
+   (*Buat kelas baru* / *Buka lembar <kelas>*): lembar seperti Excel di dalam halaman (bukan pop-up)
+   berisi Nama, NIS, NISN, L/P, dan **Sakit/Izin/Alpa** (+/− menambah/mengurangi satu hari; % kehadiran
+   dihitung dari hari efektif). Tersimpan otomatis, juga saat pindah halaman. Enter = baris berikutnya,
+   salin-tempel beberapa baris/kolom dari Excel, urutan baris = nomor absen (geser ↑/↓, Alt+↑/↓). *Kelola kelas → Ekspor ke Excel*
    menyimpan daftar siswa (No, Nama, NIS, NISN, L/P, Kelas) yang bisa diimpor lagi, mis. di laptop
    guru lain (`src-tauri/src/roster.rs`). Yang disimpan hanya nama, NIS, NISN, jenis kelamin, dan kelas.
 2. **Nilai Mapel**: impor rekap nilai (kolom `NAMA SISWA` + baris `PH`/`PTS`, seperti sheet
    *Data Nilai Kls 7 8,9*). Nama yang disingkat atau salah ketik dicocokkan otomatis
    dan dilaporkan untuk dicek. Nilai juga bisa diedit langsung di tabel.
-3. **Isi Rapor**: ATL (bagian 1), proyek/UOI + narasi (bagian 2), kehadiran, dan indikator
+   File guru yang susunannya lain (judul satu baris "IPA PH", satu sheet per mapel dengan
+   NH 1/NH 2/Rata-rata NH/PTS, angka berkoma, kelas di judul atau nama sheet) dibaca lewat
+   *Atur kolom sendiri* (`src-tauri/src/score_import.rs`): kolom ditebak, bisa dikoreksi, beberapa
+   kolom PH dirata-rata, siswa dicocokkan lewat NISN/NIS lalu nama, ada ringkasan sebelum diterapkan.
+   Penulisan kelas yang berbeda ("9.1", "Kelas IX 1") disamakan dengan kelas yang sudah ada ("IX-1").
+3. **Isi Rapor** (tab *Per siswa* dan *Nilai proyek*; tab *Tabel kelas* sengaja dihapus supaya
+   tidak membingungkan guru): ATL (bagian 1), proyek/UOI + narasi (bagian 2), kehadiran, dan indikator
    khusus siswa (opsional). Predikat diklik (EE/ME/AE/BE) atau diketik sebagai angka (`92`).
    Isian tersimpan otomatis.
    - **Form Excel untuk fasilitator/wali kelas**: tombol *Buat form Excel* membuat file .xlsx
@@ -26,13 +33,28 @@ dalam format Excel yang sudah biasa dipakai, atau mengisinya langsung di aplikas
      narasi, dan/atau kehadiran. Isian yang sudah ada ikut tercantum. Setelah diisi, *Impor form*
      menampilkan pratinjau (berapa isian berubah, isian lama yang tertimpa, isian yang tidak
      terbaca) sebelum diterapkan. Sel kosong tidak menghapus data; urutan baris boleh diubah.
+   - **Nilai proyek** (tab di Isi rapor): satu proyek × satu kelas — Understanding, Inquiry, narasi;
+     tempel dari Excel, atau *Impor nilai proyek dari Excel* (`src-tauri/src/project_import.rs`): kolom
+     ditebak dari judul/isi (EE/E/angka), proyek ditebak dari nama sheet/judul, nama dicocokkan
+     (persis → singkatan → nama dipendekkan → mirip), pratinjau perubahan & isian yang tertimpa
+     sebelum diterapkan; sel kosong tidak menghapus.
+   - **Indikator ATL per predikat**: Pengaturan → ATL, tiap atribut punya teks untuk EE/ME/AE/BE
+     (`AtlConfig.levels`); rapor mencetak teks sesuai predikat siswa, kosong = indikator umum.
+   - **Kotak identitas siswa**: Pengaturan → Kotak identitas siswa. Label tiap baris (Student Name,
+     Grade / Class, Student ID, Homeroom Teacher, Academic Year, Attendance) bebas diganti, bisa
+     disembunyikan dan diurutkan; kelas bisa "Grade 9 (IX-1)" atau "IX-1", nomor induk bisa NIS+NISN,
+     NIS saja, atau NISN saja (`Settings.info_fields`, template: `st.info`).
    - **Bank kalimat narasi**: kalimat bahasa Inggris siap pakai per predikat + "langkah
      berikutnya"; {name}, {their}, {theme} diisi otomatis (kata ganti dari jenis kelamin).
 4. **Cetak Rapor**: pratinjau per kelas, lalu cetak atau *Save as PDF*. Satu siswa per halaman baru.
    - **PDF per siswa**: satu file per siswa (`01 Nama Siswa.pdf`) lewat Microsoft Edge mode
      headless (selalu ada di Windows 10/11), ±12 detik per kelas.
-   - **Leger Excel**: satu sheet per kelas (nilai, predikat, ATL, proyek, kehadiran, status rapor)
-     + sheet *Rekap* berisi sebaran predikat per mapel termasuk jumlah nilai di bawah rentang.
+   - **Leger Excel**: sheet *Rekap* (sebaran predikat per mapel/kelas, baris *Semua kelas*), satu sheet
+     per kelas, dan sheet *Catatan* (rincian yang belum lengkap per siswa). Sheet kelas siap cetak
+     mendatar dalam **2 halaman** (ukuran kertas dari Pengaturan): halaman 1 = identitas + nilai mapel
+     (PH, PTS, Akhir, Pred.) + rata-rata kelas; halaman 2 = No/Nama lagi + ATL, proyek, S/I/A/Hadir,
+     ringkasan "Belum lengkap". Ada keterangan arti warna, tanda tangan kepala sekolah & wali kelas di
+     tiap halaman, judul kolom berulang, dan nomor halaman.
    - **Data siswa format bebas** (SD, SMA, daftar dari guru): kalau file bukan ekspor Dapodik,
      aplikasi menebak baris judul (juga judul 2 baris/sel digabung), kolom Nama, NIS/Induk, NISN,
      L/P, Kelas — dari judul kolom **dan** isinya (10 digit = NISN). Kelas ditebak dari kolom kelas,
@@ -51,12 +73,14 @@ dalam format Excel yang sudah biasa dipakai, atau mengisinya langsung di aplikas
    terkunci otomatis jika tidak dipakai (default 10 menit) dan bisa dikunci dengan Ctrl+L.
    Kata sandi & kode pemulihan disimpan sebagai hash Argon2id di `keamanan.json` (terpisah dari
    `data.json`, tidak ikut backup). Selama terkunci semua perintah data ditolak di sisi Rust;
-   5× salah → harus menunggu. Lupa kata sandi → pakai kode pemulihan (ditampilkan sekali saat
-   dipasang). Catatan: file data/backup **tidak dienkripsi**; kunci ini melindungi pemakaian aplikasi.
+   5× salah → harus menunggu. Lupa kata sandi → 6 angka dari **Google Authenticator** di HP
+   (opsional, dihubungkan lewat kode QR di Data & arsip; TOTP RFC 6238, tanpa internet, jam laptop
+   diberi kelonggaran ±1 menit dan jam yang meleset dilaporkan; `src-tauri/src/totp.rs`), atau kode
+   pemulihan (ditampilkan sekali saat dipasang; disarankan difoto dengan HP). Catatan: file data/backup **tidak dienkripsi**; kunci ini melindungi pemakaian aplikasi.
    Juga: backup ke flashdisk (aplikasi mengingatkan kalau ada perubahan yang belum
    di-backup), pulihkan dari backup/arsip (data sekarang selalu diamankan dulu), dan *mulai
    semester baru* (data diarsipkan; pengaturan dibawa; nilai & isian dikosongkan).
-6. **Pengaturan**: logo sekolah, identitas rapor, rumus & rentang predikat, daftar mapel (bisa lebih dari 3),
+6. **Pengaturan**: logo sekolah, identitas rapor, kotak identitas siswa, rumus & rentang predikat, daftar mapel (bisa lebih dari 3),
    atribut ATL, 7 proyek, wali kelas, ukuran kertas, dan desain rapor kustom.
    - **Tanda tangan** (wali kelas per kelas + kepala sekolah): pilih *tanda tangan basah*
      (ruang dikosongkan) atau *digital*. Tanda tangan digital bisa dari foto/scan kertas
@@ -99,6 +123,28 @@ cargo run --example contoh_rapor -- "../berkas_atau_template/Contoh rekap nilai 
 Untuk uji coba tanpa mengganggu data asli, jalankan dengan variabel lingkungan
 `ERAPORT_DATA_DIR=<folder lain>`.
 
+## Versi MacBook
+
+Aplikasi Mac hanya bisa dibuat di macOS, jadi dibuat di server macOS GitHub:
+GitHub → **Actions** → **Build macOS** → **Run workflow** (`.github/workflows/build-macos.yml`).
+Setelah ±20 menit, unduh dari bagian *Artifacts*: `E-Raport-macOS` (file `.dmg`, satu file untuk
+Mac Intel dan Apple Silicon, macOS 11 ke atas) dan `uji-macos-screenshot` (aplikasi dibuka di
+server macOS). Workflow juga menjalankan semua unit test di macOS, termasuk membuat PDF lewat Chrome.
+
+Memasang di MacBook guru:
+1. Buka file `.dmg`, seret **E-Raport** ke folder **Applications**.
+2. Aplikasi belum ditandatangani Apple (perlu akun Apple Developer, $99/tahun), jadi saat pertama
+   dibuka macOS menolak ("tidak dapat memverifikasi…"). Klik **Selesai**, lalu buka
+   **Pengaturan Sistem → Privasi & Keamanan**, gulir ke bawah, klik **Tetap Buka** (Open Anyway),
+   masukkan kata sandi Mac. Cukup sekali. (Cara cepat lewat Terminal: `xattr -cr /Applications/E-Raport.app`.)
+3. Saat diminta akses ke folder **Dokumen**, klik **Izinkan** (data tersimpan di Dokumen/E-Raport).
+
+Perbedaan di Mac: tombol pintas memakai ⌘ (⌘L mengunci aplikasi). **Cetak / Simpan PDF** membuat
+PDF lalu membukanya di Preview (⌘P untuk mencetak), karena dialog cetak di dalam WebKit macOS tidak
+bisa diandalkan. PDF dibuat lewat Google Chrome/Edge/Chromium/Brave; tanpa itu rapor dibuka di Safari
+untuk dicetak dari sana, dan "PDF per siswa" meminta guru memasang Google Chrome.
+Data dan backup bisa dipindah antara Windows dan Mac (formatnya sama).
+
 ## Data
 
 Semua data ada di **`Dokumen\E-Raport\`**:
@@ -124,6 +170,7 @@ src-tauri/src/
   forms.rs      form Excel untuk fasilitator (rust_xlsxwriter) + impor kembali
   leger.rs      leger kelas + rekap predikat ke Excel
   roster.rs     daftar kelas yang diisi di aplikasi + ekspor daftar siswa ke Excel
+  project_import.rs  impor nilai proyek dari Excel guru (kolom ditebak)
   pdf.rs        PDF per siswa lewat Edge headless
   view.rs       hasil hitungan per siswa (dipakai layar & rapor)
   report.rs     render rapor HTML (minijinja) dari templates/report.html

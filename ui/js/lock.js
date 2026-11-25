@@ -37,7 +37,8 @@ export function showRecoveryCode(code, { title = 'Simpan kode pemulihan' } = {})
         h('p', {}, 'Kalau kata sandi lupa, aplikasi hanya bisa dibuka dengan kode ini. Kode ini ', h('b', {}, 'hanya ditampilkan sekali'), '.'),
         h('div', { class: 'recovery-code', 'aria-label': 'Kode pemulihan' }, code),
         h('ul', { class: 'hint', style: { margin: 0, paddingLeft: '18px' } },
-          h('li', {}, 'Tulis di kertas dan simpan di tempat aman (mis. lemari kepala sekolah), terpisah dari laptop.'),
+          h('li', {}, 'Paling mudah: ', h('b', {}, 'foto kode ini dengan HP Anda'), '. Jangan dikirim ke grup WhatsApp.'),
+          h('li', {}, 'Atau tulis di kertas dan simpan di tempat aman, terpisah dari laptop.'),
           h('li', {}, 'Jangan disimpan di laptop ini atau di flashdisk backup.')),
         h('label', { class: 'check' }, ack, 'Saya sudah mencatat kode ini di tempat aman')),
       actions: actions(false),
@@ -90,8 +91,37 @@ export function showLockScreen(status = {}) {
       card.replaceChildren(brand(),
         h('div', {}, h('h1', { id: 'lock-title' }, 'Aplikasi terkunci'), h('p', { class: 'muted' }, 'Masukkan kata sandi untuk melanjutkan.')),
         status.problem ? h('p', { class: 'note danger small' }, status.problem) : form,
-        status.problem ? null : h('div', { class: 'lock-foot' }, link('Lupa kata sandi?', drawRecovery, 'muted')));
+        status.problem ? null : h('div', { class: 'lock-foot' }, link('Lupa kata sandi?', status.authenticator ? drawAuthenticator : drawRecovery, 'muted')));
       setTimeout(() => pw.input.focus(), 30);
+    }
+
+    /** Lupa kata sandi lewat Google Authenticator (kalau sudah dihubungkan). */
+    function drawAuthenticator() {
+      errBox.textContent = '';
+      const code = h('input', { autocomplete: 'one-time-code', inputmode: 'numeric', maxlength: 7, spellcheck: 'false', placeholder: '123 456',
+        class: 'code-input otp-input', 'aria-label': 'Kode Google Authenticator' });
+      const pw1 = passwordField('Kata sandi baru', { autocomplete: 'new-password' });
+      const pw2 = passwordField('Ulangi kata sandi baru', { autocomplete: 'new-password' });
+      const submit = h('button', { type: 'submit', class: 'btn primary lock-go' }, 'Atur kata sandi baru');
+      const form = h('form', { class: 'stack', onsubmit: async (ev) => {
+        ev.preventDefault();
+        if (code.value.replace(/\D/g, '').length !== 6) { fail('Ketik 6 angka dari Google Authenticator.', code); return; }
+        if (pw1.input.value !== pw2.input.value) { fail('Kata sandi baru dan ulangannya tidak sama.', pw2.input); return; }
+        submit.disabled = true;
+        try {
+          await api.securityResetWithAuthenticator(code.value, pw1.input.value);
+          toast('Kata sandi baru dipasang', 'ok');
+          finish();
+        } catch (e) { fail(e, code); } finally { submit.disabled = false; }
+      } },
+      h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Kode dari Google Authenticator'), code,
+        h('span', { class: 'hint' }, 'Buka Google Authenticator di HP Anda, lihat 6 angka di bawah tulisan E-Raport. Angkanya berganti tiap 30 detik.')),
+      pw1.el, pw2.el, errBox, submit);
+      card.replaceChildren(brand(),
+        h('div', {}, h('h1', { id: 'lock-title' }, 'Lupa kata sandi'), h('p', { class: 'muted' }, 'Pakai kode dari HP untuk membuat kata sandi baru.')),
+        form,
+        h('div', { class: 'lock-foot' }, link('Kembali', drawLogin, 'muted'), link('HP tidak ada? Pakai kode pemulihan', drawRecovery, 'muted')));
+      setTimeout(() => code.focus(), 30);
     }
 
     function drawRecovery() {
@@ -116,7 +146,8 @@ export function showLockScreen(status = {}) {
       card.replaceChildren(brand(),
         h('div', {}, h('h1', { id: 'lock-title' }, 'Lupa kata sandi'), h('p', { class: 'muted' }, 'Pakai kode pemulihan untuk membuat kata sandi baru. Kode lama tidak berlaku lagi setelah ini.')),
         form,
-        h('div', { class: 'lock-foot' }, link('Kembali', drawLogin, 'muted')));
+        h('div', { class: 'lock-foot' }, link('Kembali', drawLogin, 'muted'),
+          status.authenticator ? link('Pakai kode Google Authenticator', drawAuthenticator, 'muted') : null));
       setTimeout(() => code.focus(), 30);
     }
 

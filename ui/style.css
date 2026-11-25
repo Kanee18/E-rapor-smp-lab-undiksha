@@ -293,6 +293,7 @@ table.cells tbody tr:hover td.sticky, table.cells tbody tr:hover td.sticky2 { ba
   --c: var(--text-3);
   display: inline-flex; align-items: center; gap: 6px;
   height: 24px; padding: 0 9px 0 8px; border-radius: 99px;
+  background: var(--soft); color: var(--c);
   background: color-mix(in srgb, var(--c) 11%, white);
   font-size: 12px; font-weight: 700; letter-spacing: .02em; color: color-mix(in srgb, var(--c) 80%, #000);
 }
@@ -503,6 +504,7 @@ table.cells input.rate-in {
 table.cells input.rate-in.has-num { width: 48px; text-align: right; text-transform: none; }
 table.cells input.rate-in.is-code {
   --c: var(--text-3);
+  background: var(--soft); color: var(--c);
   background: color-mix(in srgb, var(--c) 11%, white);
   color: color-mix(in srgb, var(--c) 80%, #000);
   font-weight: 700;
@@ -572,21 +574,28 @@ table.edit input:focus, table.edit textarea:focus, table.edit select:focus { bac
 table.edit textarea { min-height: 36px; }
 table.edit .tight { width: 1%; white-space: nowrap; padding-top: 9px; }
 .add-row { padding: 10px 14px; border-top: 1px solid var(--line); }
-/* daftar siswa yang diisi langsung di aplikasi */
-.roster-head { display: grid; grid-template-columns: 220px 1fr; gap: 18px; align-items: end; }
-.roster-head .hint { margin: 0 0 4px; }
-.roster .sheet { overflow: visible; }
-table.roster-table td { padding: 3px 6px; vertical-align: middle; }
+/* lembar kelas seperti Excel (Data siswa → Buka lembar / Buat kelas baru) */
+.content.fill > .roster-page { display: flex; flex-direction: column; gap: 14px; flex: 1 1 auto; min-height: 0; }
+.roster-bar { display: grid; grid-template-columns: 200px 1fr auto; gap: 18px; align-items: end; }
+.roster-bar .hint { margin: 0 0 6px; }
+.roster-bar .save-state { margin-bottom: 10px; white-space: nowrap; }
+.roster-bar .save-state.error { white-space: normal; max-width: 360px; text-align: right; }
+.roster-page > .roster-sheet { flex: 0 1 auto; min-height: 0; }
+table.roster-table td { padding: 2px 6px; vertical-align: middle; }
 table.roster-table td.idx { color: var(--text-3); width: 44px; text-align: right; padding-right: 10px; font-variant-numeric: tabular-nums; }
 table.roster-table input, table.roster-table select { width: 100%; }
 table.roster-table .w-num { width: 120px; }
 table.roster-table .w-nisn { width: 140px; }
 table.roster-table .w-lp { width: 74px; }
-table.roster-table .w-num input, table.roster-table .w-nisn input { font-variant-numeric: tabular-nums; }
+table.roster-table .w-day { width: 58px; }
+table.roster-table .w-day input { text-align: center; }
+table.roster-table .gl { border-left: 1px solid var(--line); }
+table.roster-table .att-out { width: 64px; color: var(--text-2); font-size: 13px; }
+table.roster-table .w-num input, table.roster-table .w-nisn input, table.roster-table .w-day input { font-variant-numeric: tabular-nums; }
 table.roster-table .row-tools { width: 1%; white-space: nowrap; text-align: right; }
-table.roster-table tr.removed input, table.roster-table tr.removed select { text-decoration: line-through; color: var(--danger); opacity: .7; }
-table.roster-table tr.removed td { background: #FDF6F5; }
-table.roster-table thead th { position: sticky; top: -12px; z-index: 1; }
+table.roster-table .row-tools .icon-btn { opacity: 0; transition: opacity .12s; }
+table.roster-table tr:hover .row-tools .icon-btn, table.roster-table tr:focus-within .row-tools .icon-btn { opacity: 1; }
+table.roster-table input.invalid { background: #FDF1EF; border-color: var(--danger); }
 .add-row .muted { margin-left: 8px; }
 .save-bar {
   position: sticky; bottom: 18px; z-index: 6;
@@ -741,7 +750,7 @@ body.locked > aside, body.locked > main { visibility: hidden; }
 .lock-go svg { width: 15px; height: 15px; }
 .lock-err { min-height: 1.4em; margin-top: -4px; color: var(--danger); font-size: 13px; }
 .lock-err:empty { min-height: 0; margin: 0; }
-.lock-foot { display: flex; justify-content: center; font-size: 13px; }
+.lock-foot { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; }
 .shake { animation: shake .35s ease; }
 @keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
 .pw { position: relative; display: block; }
@@ -790,3 +799,48 @@ body.locked > aside, body.locked > main { visibility: hidden; }
 .menu-item.danger { color: var(--danger); }
 .menu-hint { font-size: 12px; font-weight: 400; color: var(--text-3); }
 .class-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* Pengaturan → ATL: indikator per predikat */
+.atl-card { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.atl-card > summary { display: flex; align-items: center; gap: 12px; padding: 8px 10px 8px 16px; cursor: pointer; list-style: none; }
+.atl-card > summary::-webkit-details-marker { display: none; }
+.atl-card > summary::before { content: ""; width: 7px; height: 7px; border-right: 1.6px solid var(--text-3); border-bottom: 1.6px solid var(--text-3); transform: rotate(-45deg); transition: transform .15s; flex: none; }
+.atl-card[open] > summary::before { transform: rotate(45deg); }
+.atl-card > summary .spacer { flex: 1; }
+.atl-name { font-weight: 600; }
+.atl-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--line); }
+.atl-levels { display: flex; flex-direction: column; gap: 8px; }
+.atl-level { display: grid; grid-template-columns: 48px 1fr; gap: 10px; align-items: start; }
+.atl-code { margin-top: 6px; display: inline-flex; }
+
+/* Isi rapor → Nilai proyek */
+.proj-sub2 { margin-top: -8px; }
+.proj-sub2 .search { width: 200px; }
+table.proj-table td.narr-td { min-width: 380px; width: 50%; }
+table.proj-table textarea.narr-in {
+  width: 100%; min-height: 32px; padding: 5px 8px; resize: none; line-height: 1.45;
+  border: 1px solid transparent; border-radius: 8px; background: transparent; box-shadow: none;
+}
+table.proj-table textarea.narr-in:hover { background: var(--hover); }
+table.proj-table textarea.narr-in:focus { background: var(--panel); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
+table.proj-table .cell-who { display: flex; align-items: center; gap: 8px; }
+
+/* Pengaturan → Kotak identitas siswa */
+table.info-edit td.center { text-align: center; padding-top: 12px; }
+table.info-edit tr.off td:not(.center):not(.tight) { opacity: .45; }
+.info-preview-wrap { display: flex; flex-direction: column; gap: 6px; }
+.info-preview {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 28px; padding: 8px 12px;
+  background: #F6F9FB; border: 1px solid #E2E8EF; color: #383838;
+  font-family: Arial, Helvetica, sans-serif; font-size: 12.5px; line-height: 1.4;
+}
+.info-preview b { color: #1F2A37; }
+
+/* Data & arsip → Google Authenticator */
+.auth-block { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 18px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+.auth-block .auth-text { max-width: 60ch; }
+.qr-wrap { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.qr-box { flex: none; width: 220px; height: 220px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 4px; }
+.qr-box svg { display: block; width: 100%; height: 100%; }
+.steps-list { margin: 0; padding-left: 20px; display: grid; gap: 6px; flex: 1 1 260px; }
+.otp-input { font-size: 22px; letter-spacing: .25em; text-align: center; }

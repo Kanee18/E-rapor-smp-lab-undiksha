@@ -181,6 +181,11 @@ export function link(label, onClick, kind = '') {
 
 // ---------------------------------------------------------------- toast & modal
 
+/** Berjalan di Mac? (tombol ⌘ menggantikan Ctrl; cetak lewat Preview). */
+export const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+/** Tulisan tombol pintas: "⌘L" di Mac, "Ctrl+L" di Windows. */
+export const shortcut = (key) => (isMac ? `⌘${key}` : `Ctrl+${key}`);
+
 export function toast(message, kind = 'info', ms = 3500) {
   const box = document.getElementById('toasts');
   const el = h('div', { class: `toast ${kind}`, role: kind === 'error' ? 'alert' : 'status' }, message);

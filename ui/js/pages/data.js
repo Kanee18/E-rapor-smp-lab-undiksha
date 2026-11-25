@@ -1,6 +1,6 @@
 // Data & arsip: backup ke flashdisk, pulihkan, semester baru, daftar arsip.
 import { api } from '../api.js';
-import { h, button, errorText, link, openModal, toast } from '../dom.js';
+import { h, button, errorText, link, openModal, shortcut, toast } from '../dom.js';
 import { passwordField, showRecoveryCode } from '../lock.js';
 
 /** "2026-11-14T02:30:00Z" → "14 Nov 2026, 10.30" (waktu laptop). */
@@ -107,12 +107,101 @@ function securitySection(app, rerender, section) {
     try { await api.securitySetAutoLock(Number(e.target.value)); await app.refreshSecurity(); toast('Kunci otomatis diperbarui', 'ok'); } catch (err) { toast(errorText(err), 'error'); }
   } }, AUTO_LOCK.map(([v, t]) => h('option', { value: v, selected: sec.auto_lock_minutes === v }, t)));
   return section('Kata sandi aplikasi', lede,
-    h('p', { class: 'note ok' }, h('b', {}, 'Kata sandi aktif. '), 'Kunci kapan saja dengan Ctrl+L atau tombol "Kunci aplikasi" di kiri bawah.'),
+    h('p', { class: 'note ok' }, h('b', {}, 'Kata sandi aktif. '), `Kunci kapan saja dengan ${shortcut('L')} atau tombol "Kunci aplikasi" di kiri bawah.`),
     h('div', { class: 'sec-row' },
       h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Kunci otomatis setelah tidak dipakai'), autoLock),
       button('Kunci sekarang', { onClick: () => app.lock() }),
       button('Ganti kata sandi…', { onClick: () => passwordModal(app, true, rerender) }),
-      button('Matikan kata sandi…', { kind: 'quiet danger', onClick: () => disableModal(app, rerender) })));
+      button('Matikan kata sandi…', { kind: 'quiet danger', onClick: () => disableModal(app, rerender) })),
+    authenticatorBlock(app, rerender));
+}
+
+/** Google Authenticator: cara kedua mengganti kata sandi yang terlupa (selain kode pemulihan). */
+function authenticatorBlock(app, rerender) {
+  const on = app.security.authenticator;
+  return h('div', { class: 'auth-block' },
+    h('div', { class: 'auth-text' },
+      h('b', {}, on ? 'Google Authenticator terhubung' : 'Lupa kata sandi? Siapkan HP Anda'),
+      h('p', { class: 'hint', style: { margin: '4px 0 0' } }, on
+        ? 'Kalau lupa kata sandi, klik "Lupa kata sandi?" di layar kunci lalu masukkan 6 angka dari Google Authenticator. Kode pemulihan tetap bisa dipakai kalau HP hilang atau ganti HP.'
+        : 'Hubungkan aplikasi Google Authenticator di HP. Kalau nanti lupa kata sandi, cukup masukkan 6 angka dari HP, tanpa perlu kode pemulihan. Tidak butuh internet.')),
+    on
+      ? button('Putuskan…', { kind: 'quiet danger', onClick: () => removeAuthenticatorModal(app, rerender) })
+      : button('Hubungkan Google Authenticator…', { onClick: () => connectAuthenticatorModal(app, rerender) }));
+}
+
+function connectAuthenticatorModal(app, onDone) {
+  const cur = passwordField('Kata sandi sekarang');
+  const err = h('p', { class: 'lock-err', role: 'alert' });
+  const modal = openModal({
+    title: 'Hubungkan Google Authenticator',
+    body: h('div', { class: 'stack' },
+      h('ol', { class: 'steps-list' },
+        h('li', {}, 'Pasang aplikasi ', h('b', {}, 'Google Authenticator'), ' di HP (gratis, dari Play Store / App Store).'),
+        h('li', {}, 'Masukkan kata sandi aplikasi ini, lalu klik Lanjut. Kode QR akan muncul.')),
+      cur.el, err),
+    actions: [
+      { label: 'Batal', kind: 'quiet', onClick: (c) => c() },
+      { label: 'Lanjut', kind: 'primary', onClick: async () => {
+        err.textContent = '';
+        try { showQr(await api.securityAuthenticatorBegin(cur.input.value)); } catch (e) { err.textContent = errorText(e); cur.input.select(); }
+      } },
+    ],
+  });
+  setTimeout(() => cur.input.focus(), 50);
+
+  function showQr(setup) {
+    const qr = h('div', { class: 'qr-box', 'aria-label': 'Kode QR untuk Google Authenticator' });
+    qr.innerHTML = setup.qr_svg; // SVG buatan aplikasi sendiri (kotak-kotak hitam putih), bukan dari luar
+    const code = h('input', { autocomplete: 'one-time-code', inputmode: 'numeric', maxlength: 7, placeholder: '123 456', class: 'code-input otp-input', 'aria-label': 'Kode 6 angka' });
+    const err2 = h('p', { class: 'lock-err', role: 'alert' });
+    const confirm = async (close) => {
+      err2.textContent = '';
+      if (code.value.replace(/\D/g, '').length !== 6) { err2.textContent = 'Ketik 6 angka yang tampil di HP.'; code.focus(); return; }
+      try {
+        await api.securityAuthenticatorConfirm(code.value);
+        close();
+        await app.refreshSecurity();
+        toast('Google Authenticator terhubung. Kalau lupa kata sandi, pakai kode dari HP.', 'ok', 7000);
+        onDone?.();
+      } catch (e) { err2.textContent = errorText(e); code.select(); }
+    };
+    modal.setBody(h('div', { class: 'stack' },
+      h('div', { class: 'qr-wrap' }, qr,
+        h('ol', { class: 'steps-list' },
+          h('li', {}, 'Di Google Authenticator, ketuk tombol ', h('b', {}, '+'), ' lalu ', h('b', {}, 'Pindai kode QR'), '.'),
+          h('li', {}, 'Arahkan kamera HP ke kode di samping. Akan muncul ', h('b', {}, 'E-Raport'), ' dengan 6 angka.'),
+          h('li', {}, 'Ketik 6 angka itu di bawah untuk memastikan sudah tersambung.'))),
+      h('details', { class: 'small' }, h('summary', {}, 'Kamera tidak bisa memindai?'),
+        h('p', { class: 'hint' }, 'Pilih "Masukkan kunci penyiapan", nama akun: E-Raport, lalu ketik kunci ini (jenis: berbasis waktu):'),
+        h('div', { class: 'recovery-code', style: { fontSize: '15px' } }, setup.key)),
+      h('label', { class: 'field', style: { maxWidth: '220px' } }, h('span', { class: 'lbl' }, 'Kode 6 angka dari HP'), code),
+      err2));
+    modal.setActions([
+      { label: 'Batal', kind: 'quiet', onClick: (c) => c() },
+      { label: 'Hubungkan', kind: 'primary', onClick: confirm },
+    ]);
+    code.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); confirm(modal.close); } });
+    setTimeout(() => code.focus(), 50);
+  }
+}
+
+function removeAuthenticatorModal(app, onDone) {
+  const cur = passwordField('Kata sandi sekarang');
+  const err = h('p', { class: 'lock-err', role: 'alert' });
+  openModal({
+    title: 'Putuskan Google Authenticator?',
+    body: h('div', { class: 'stack' },
+      h('p', {}, 'Setelah diputus, kode dari HP tidak bisa dipakai lagi untuk mengganti kata sandi. Kode pemulihan tetap berlaku. Hapus juga entri E-Raport di aplikasi Google Authenticator supaya tidak membingungkan.'),
+      cur.el, err),
+    actions: [
+      { label: 'Batal', kind: 'quiet', onClick: (c) => c() },
+      { label: 'Putuskan', kind: 'danger solid', onClick: async (close) => {
+        try { await api.securityAuthenticatorRemove(cur.input.value); close(); await app.refreshSecurity(); toast('Google Authenticator diputus', 'ok'); onDone?.(); } catch (e) { err.textContent = errorText(e); }
+      } },
+    ],
+  });
+  setTimeout(() => cur.input.focus(), 50);
 }
 
 /** Pasang (enabled = false) atau ganti (enabled = true) kata sandi. */

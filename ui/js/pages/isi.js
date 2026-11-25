@@ -1,18 +1,21 @@
 // Isi rapor: ATL, proyek (UOI), narasi, kehadiran, dan indikator khusus per siswa.
-// Tersedia dua tampilan: "Per siswa" (lengkap dengan indikator) dan "Tabel kelas" (cepat seperti spreadsheet).
+// Dua tampilan: "Per siswa" (semua isian satu siswa) dan "Nilai proyek" (satu proyek, sekelas).
+// (Tampilan "Tabel kelas" dihapus 2026-11: cara kerjanya sama dengan Per siswa dan membingungkan guru.)
 // Isian tersimpan otomatis sesaat setelah berhenti mengetik/mengklik.
 import { api } from '../api.js';
 import {
-  h, autoGrow, avatar, button, icon, classTabs, confirmBox, expandGradeCode, localGrade, debounce, emptyState, errorText, fitPreview, fmtNum, link, openModal,
-  rankMap, ratingControl, searchBox, stamp, swapIn, toast, toolbar,
+  h, autoGrow, avatar, button, icon, classTabs, confirmBox, localGrade, debounce, emptyState, errorText, fitPreview, fmtNum, link, openModal,
+  isMac, rankMap, ratingControl, searchBox, stamp, swapIn, toast, toolbar,
 } from '../dom.js';
+import { printOnMac } from './cetak.js';
 import { importFormFlow, openFormBuilder } from '../form-tools.js';
 import { importWizard } from '../import-wizard.js';
-import { appendSentence, displayName, draftNarrative, openPhraseBank, phraseBankList } from '../narrative.js';
+import { appendSentence, displayName, draftNarrative, openPhraseBank } from '../narrative.js';
+import { renderProjectMode } from './isi-project.js';
 
 export async function render(ctx) {
   const { app, content, actions, setTitle } = ctx;
-  setTitle('Isi rapor', 'Penilaian ATL, proyek, narasi, dan kehadiran. Isi per siswa atau sekaligus satu kelas di Tabel kelas; semua tersimpan otomatis.');
+  setTitle('Isi rapor', 'Penilaian ATL, proyek, narasi, dan kehadiran. Isi per siswa; nilai proyek sekelas di tab Nilai proyek. Semua tersimpan otomatis.');
   const classes = app.classes();
   actions.replaceChildren();
   const reloadAll = async () => { await app.reload(); content.replaceChildren(); render(ctx); };
@@ -47,7 +50,7 @@ export async function render(ctx) {
   });
   let views = await api.studentViews(cls);
   let selectedId = views.some((v) => v.student.id === app.selectedStudentId) ? app.selectedStudentId : views[0]?.student.id;
-  let mode = app.isiMode || 'student'; // 'student' | 'table'
+  let mode = app.isiMode === 'project' ? 'project' : 'student'; // 'student' | 'project'
 
   // ---------- penyimpanan otomatis (mendukung banyak siswa sekaligus di mode tabel)
   const pending = new Map(); // studentId -> fields
@@ -129,7 +132,7 @@ export async function render(ctx) {
 
   function drawModeTabs() {
     modeBox.replaceChildren(
-      ...[['student', 'Per siswa'], ['table', 'Tabel kelas']].map(([id, label]) =>
+      ...[['student', 'Per siswa'], ['project', 'Nilai proyek']].map(([id, label]) =>
         h('button', {
           type: 'button', role: 'tab', class: `tab${mode === id ? ' active' : ''}`, 'aria-selected': String(mode === id),
           onclick: () => { if (mode !== id) switchMode(id); },
@@ -142,7 +145,13 @@ export async function render(ctx) {
       content.lastElementChild.remove();
     }
     setSaveState('', '');
-    const mainNode = mode === 'table' ? renderTableMode() : renderStudentMode();
+    const mainNode = mode === 'project'
+      ? renderProjectMode({
+        app, settings, ranks, views, cls, content, queue, flush, saveState, rerender, projectLabel,
+        setOnSaved: (fn) => { onSaved = fn; },
+        makeFields, makeDraft,
+      })
+      : renderStudentMode();
     if (animate || !ctx.entering) swapIn(mainNode);
   }
 
@@ -240,27 +249,36 @@ export async function render(ctx) {
         drawFootText();
       };
 
+      // defaultText boleh fungsi: indikator ATL bawaan mengikuti predikat yang dipilih (EE/ME/AE/BE)
       const indicatorEditor = (defaultText, current, onChange) => {
         const wrap = h('div', { class: 'ind' });
-        const show = (editing) => {
-          if (editing) {
-            const ta = autoGrow(h('textarea', { value: current, placeholder: defaultText, 'aria-label': 'Indikator khusus', oninput: (e) => { current = e.target.value; onChange(current); } }));
+        const def = () => (typeof defaultText === 'function' ? defaultText() : defaultText);
+        let editing = false;
+        const show = (edit) => {
+          editing = edit;
+          if (edit) {
+            const ta = autoGrow(h('textarea', { value: current, placeholder: def(), 'aria-label': 'Indikator khusus', oninput: (e) => { current = e.target.value; onChange(current); } }));
             wrap.replaceChildren(ta, link('Pakai indikator bawaan', () => { current = ''; onChange(''); show(false); }, 'muted'));
             ta.focus();
           } else {
             wrap.replaceChildren(
-              h('div', { class: current ? 'custom' : '' }, current || defaultText || '—'),
+              h('div', { class: current ? 'custom' : '' }, current || def() || '—'),
               link(current ? 'Ubah indikator khusus' : 'Ubah untuk siswa ini', () => show(true), 'muted'));
           }
         };
         show(false);
+        wrap.refresh = () => { if (!editing) show(false); };
         return wrap;
       };
 
-      const atlRows = settings.atl.map((a) => h('div', { class: 'rate-row' },
-        h('div', { class: 'nm' }, a.name),
-        ratingControl(fields.atl[a.id].grade, settings.grading, ranks, (val) => { fields.atl[a.id].grade = val; changed(); }, { label: a.name }),
-        indicatorEditor(a.indicator, fields.atl[a.id].indicator, (val) => { fields.atl[a.id].indicator = val; changed(); })));
+      const atlRows = settings.atl.map((a) => {
+        const ind = indicatorEditor(() => atlIndicator(a, fields.atl[a.id].grade, settings.grading), fields.atl[a.id].indicator,
+          (val) => { fields.atl[a.id].indicator = val; changed(); });
+        return h('div', { class: 'rate-row' },
+          h('div', { class: 'nm' }, a.name),
+          ratingControl(fields.atl[a.id].grade, settings.grading, ranks, (val) => { fields.atl[a.id].grade = val; changed(); ind.refresh(); }, { label: a.name }),
+          ind);
+      });
 
       const narrativeField = (p) => {
         const ta = autoGrow(h('textarea', { rows: 3, value: p.narrative, placeholder: 'Narasi dari fasilitator, dalam bahasa Inggris', oninput: (e) => { p.narrative = e.target.value; changed(); } }));
@@ -409,569 +427,16 @@ export async function render(ctx) {
     return split;
   }
 
-  // ================================================================ MODE 2: TABEL KELAS
-  function renderTableMode() {
-    const g = settings.grading;
-    const hasAtl = settings.atl.length > 0;
-    const hasProj = settings.projects.length > 0;
-
-    const effDays = settings.effective_days || 100;
-    const legend = h('div', { class: 'legend' },
-      ...[...g.bands].sort((a, b) => b.min - a.min).map((b) => h('span', {}, stamp({ status: 'ok', code: b.code }, ranks), `≥ ${b.min}`)),
-      h('span', { class: 'muted' }, '· Ketik E/M/A/B atau 0–100 · S/I/A otomatis hitung % dari '),
-      link(`${effDays} hari efektif`, async () => { await flush(); editEffectiveDaysDialog(app, rerender); }));
-
-    const rows = [];
-    const rowById = new Map();
-
-    // Penyaring baris: pencarian + "hanya yang belum lengkap". Daftar "belum lengkap" diambil saat
-    // dicentang, jadi baris tidak tiba-tiba hilang ketika gurunya baru selesai mengisi.
-    let searchQ = '';
-    let todoSet = null;
-    const applyRowFilter = () => {
-      for (const r of rows) {
-        r.tr.hidden = Boolean((searchQ && !r.view.student.name.toLowerCase().includes(searchQ))
-          || (todoSet && !todoSet.has(r.view.student.id)));
-      }
-    };
-    const setOnlyIncomplete = (on) => {
-      onlyIncomplete = on;
-      app.isiOnlyIncomplete = on;
-      todoSet = on ? new Set(rows.filter((r) => isiIncomplete(r.view)).map((r) => r.view.student.id)) : null;
-      applyRowFilter();
-      onlyLabel.lastChild.textContent = on ? ` Hanya yang belum lengkap (${todoSet.size})` : ' Hanya yang belum lengkap';
-    };
-    const onlyLabel = h('label', { class: 'check small', title: 'Tampilkan siswa yang ATL, proyek, atau kehadirannya belum lengkap' },
-      h('input', { type: 'checkbox', checked: onlyIncomplete, onchange: (e) => setOnlyIncomplete(e.target.checked) }),
-      h('span', {}, ' Hanya yang belum lengkap'));
-    const draftAllBtn = hasProj
-      ? button('Draf narasi kosong…', { kind: 'sm', onClick: () => draftAllDialog() })
-      : null;
-
-    const subbar = h('div', { class: 'table-subbar' },
-      legend,
-      h('div', { style: { display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' } },
-        saveState,
-        onlyLabel,
-        draftAllBtn,
-        searchBox('Cari siswa', (q) => { searchQ = q; applyRowFilter(); })));
-
-    const head1 = h('tr', {},
-      h('th', { class: 'sticky idx', rowSpan: 2 }, 'No'),
-      h('th', { class: 'sticky2', rowSpan: 2 }, 'Nama'),
-      hasAtl ? h('th', { class: 'group gl', colSpan: settings.atl.length }, '1. ATL & Learner Profile') : null,
-      hasProj ? h('th', { class: 'group gl', colSpan: 4 }, '2. Unit of Inquiry (Proyek)') : null,
-      h('th', { class: 'group gl', colSpan: 4, title: `Dihitung otomatis dari ${effDays} hari efektif` }, 'Kehadiran'));
-
-    const head2 = h('tr', {},
-      settings.atl.map((a, i) => h('th', { class: `sub${i === 0 ? ' gl' : ''}`, title: a.indicator || a.name }, a.name)),
-      hasProj ? [
-        h('th', { class: 'sub gl' }, 'Proyek'),
-        h('th', { class: 'sub' }, 'Understanding'),
-        h('th', { class: 'sub' }, 'Inquiry'),
-        h('th', { class: 'sub' }, 'Narasi'),
-      ] : null,
-      h('th', { class: 'sub gl', title: 'Sakit (hari)' }, 'S'),
-      h('th', { class: 'sub', title: 'Izin (hari)' }, 'I'),
-      h('th', { class: 'sub', title: 'Alpa / Tanpa Keterangan (hari)' }, 'A'),
-      h('th', { class: 'sub', title: 'Teks kehadiran yang tercetak di rapor' }, 'Rapor'));
-
-    let sheet;
-    function moveFocus(colKey, fromRow, step) {
-      let r = fromRow + step;
-      while (r >= 0 && r < rows.length) {
-        if (!rows[r].tr.hidden) {
-          const next = sheet.querySelector(`input[data-row="${r}"][data-col="${colKey}"]`);
-          if (next && !next.disabled) {
-            next.focus();
-            next.select();
-            return;
-          }
-        }
-        r += step;
-      }
-    }
-
-    /** Sel predikat/angka di tabel: ketik E/M/A/B atau kode penuh atau angka 0–100. */
-    function makeRateCell(initialVal, rowIdx, colKey, label, onValue, extraClass = '') {
-      const stampBox = h('span', { class: 'rate-stamp' });
-      const input = h('input', {
-        class: 'rate-in', value: initialVal, placeholder: '—', 'aria-label': label,
-        dataset: { row: String(rowIdx), col: colKey },
-        oninput: (e) => {
-          const expanded = expandGradeCode(e.target.value, g);
-          paint(expanded);
-          onValue(expanded);
-        },
-        onblur: (e) => {
-          const expanded = expandGradeCode(e.target.value, g);
-          if (e.target.value.trim()) e.target.value = expanded;
-          paint(expanded);
-        },
-        onkeydown: (e) => {
-          if (e.key === 'Enter' || e.key === 'ArrowDown') {
-            e.preventDefault();
-            const expanded = expandGradeCode(e.target.value, g);
-            if (e.target.value.trim()) e.target.value = expanded;
-            moveFocus(colKey, rowIdx, 1);
-          } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            const expanded = expandGradeCode(e.target.value, g);
-            if (e.target.value.trim()) e.target.value = expanded;
-            moveFocus(colKey, rowIdx, -1);
-          }
-        },
-      });
-
-      function paint(val) {
-        const res = localGrade(val, g);
-        const rank = res.code ? (ranks[res.code] ?? 5) : 5;
-        const isCode = res.status === 'ok' && !res.fromNumber;
-        const isNum = Boolean(res.fromNumber) && (res.status === 'ok' || res.status === 'below_scale');
-        input.className = `rate-in${isCode ? ` is-code r${rank}` : ''}${isNum ? ' has-num' : ''}${res.status === 'invalid' ? ' invalid' : ''}`;
-        input.title = res.status === 'invalid'
-          ? 'Isi kode predikat (EE/ME/AE/BE) atau nilai angka 0–100'
-          : res.status === 'below_scale'
-            ? `Nilai ${res.score} di bawah rentang ${res.code}`
-            : '';
-        if (isNum) {
-          stampBox.hidden = false;
-          stampBox.replaceChildren(stamp(res, ranks));
-        } else {
-          stampBox.hidden = true;
-          stampBox.replaceChildren();
-        }
-      }
-      paint(initialVal);
-
-      return {
-        td: h('td', { class: `c${extraClass ? ` ${extraClass}` : ''}` }, h('div', { class: 'cell-rate' }, input, stampBox)),
-        setValue: (v) => { input.value = v; paint(v); },
-      };
-    }
-
-    const tbody = h('tbody', {}, views.map((v, rowIdx) => {
-      const s = v.student;
-      const fields = makeFields(s, settings);
-      let activeProjIdx = 0;
-      const changed = () => queue(s.id, fields);
-
-      const dotEl = h('span', { class: 'dot' });
-      const paintDot = (view) => {
-        const p = view.progress;
-        const done = view.issues.length === 0;
-        const started = p.atl_done > 0 || p.projects > 0 || p.attendance;
-        dotEl.className = `dot${done ? ' done' : started ? ' part' : ''}`;
-        dotEl.title = done ? 'Rapor lengkap' : view.issues.join(' · ');
-      };
-      paintDot(v);
-
-      // 1. Sel ATL
-      const atlCells = settings.atl.map((a, i) => makeRateCell(
-        fields.atl[a.id].grade,
-        rowIdx,
-        `atl-${i}`,
-        `${a.name} — ${s.name}`,
-        (val) => { fields.atl[a.id].grade = val; changed(); },
-        i === 0 ? 'gl' : '',
-      ));
-
-      // 2. Sel Proyek (Proyek, Understanding, Inquiry, Narasi)
-      let projCells = null;
-      let refreshProjUI = () => {};
-      const getActiveProject = () => fields.projects[activeProjIdx] || fields.projects[0] || null;
-      const ensureProject = () => {
-        if (!fields.projects.length) {
-          const pid = projectPick.value || settings.projects[0]?.id || '';
-          if (!pid) return null;
-          fields.projects.push({ project_id: pid, understanding: '', inquiry: '', narrative: '' });
-          activeProjIdx = 0;
-        }
-        return getActiveProject();
-      };
-
-      if (hasProj) {
-        const projSelect = h('select', {
-          class: 'cell-select', 'aria-label': `Proyek ${s.name}`,
-          onchange: (e) => {
-            const val = e.target.value;
-            if (!val) {
-              if (fields.projects.length) {
-                fields.projects.splice(activeProjIdx, 1);
-                activeProjIdx = 0;
-              }
-            } else {
-              const existingIdx = fields.projects.findIndex((p) => p.project_id === val);
-              if (existingIdx >= 0) {
-                activeProjIdx = existingIdx;
-              } else {
-                const cur = fields.projects[activeProjIdx];
-                const curHasData = cur && (cur.understanding.trim() || cur.inquiry.trim() || cur.narrative.trim());
-                if (cur && !curHasData) {
-                  cur.project_id = val;
-                } else {
-                  fields.projects.push({ project_id: val, understanding: '', inquiry: '', narrative: '' });
-                  activeProjIdx = fields.projects.length - 1;
-                }
-              }
-            }
-            refreshProjUI();
-            changed();
-          },
-        });
-        const moreBadge = h('span', { class: 'cell-proj-more', hidden: true });
-
-        const uCell = makeRateCell(
-          getActiveProject()?.understanding ?? '',
-          rowIdx,
-          'uoi-u',
-          `Understanding Level — ${s.name}`,
-          (val) => {
-            if (!val && !getActiveProject()) return;
-            const p = ensureProject();
-            if (p) { p.understanding = val; refreshProjSelect(); changed(); }
-          },
-        );
-        const iCell = makeRateCell(
-          getActiveProject()?.inquiry ?? '',
-          rowIdx,
-          'uoi-i',
-          `Inquiry & Research Skills — ${s.name}`,
-          (val) => {
-            if (!val && !getActiveProject()) return;
-            const p = ensureProject();
-            if (p) { p.inquiry = val; refreshProjSelect(); changed(); }
-          },
-        );
-
-        const narrBtn = h('button', {
-          type: 'button', class: 'cell-narr',
-          onclick: () => openQuickNarrative(rowIdx),
-        });
-
-        function refreshProjSelect() {
-          const p = getActiveProject();
-          const curId = p?.project_id ?? '';
-          const known = settings.projects.some((pc) => pc.id === curId);
-          const hasProjData = (pid) => fields.projects.some((ep) => ep.project_id === pid && (ep.understanding.trim() || ep.inquiry.trim() || ep.narrative.trim()));
-          projSelect.replaceChildren(
-            h('option', { value: '', selected: !curId }, curId ? '— Hapus proyek ini —' : '— Belum ada —'),
-            ...settings.projects.map((pc) => h('option', { value: pc.id, selected: pc.id === curId },
-              `${hasProjData(pc.id) ? '✓ ' : ''}${projectLabel(pc)}`)),
-            curId && !known ? h('option', { value: curId, selected: true }, '(proyek dihapus)') : '',
-          );
-          projSelect.value = curId;
-          projSelect.classList.toggle('empty', !curId);
-          projSelect.title = p ? (settings.projects.find((pc) => pc.id === curId)?.theme || '') : 'Pilih proyek atau langsung ketik nilai Understanding/Inquiry';
-          if (fields.projects.length > 1) {
-            moreBadge.hidden = false;
-            moreBadge.textContent = `${fields.projects.length} proyek`;
-            moreBadge.title = `Siswa ini punya ${fields.projects.length} proyek (${fields.projects.map((ep) => settings.projects.find((pc) => pc.id === ep.project_id)?.name || ep.project_id).join(', ')}). Pilih dari daftar untuk berpindah proyek atau klik nama siswa untuk melihat semua.`;
-          } else {
-            moreBadge.hidden = true;
-          }
-        }
-
-        function refreshNarrBtn() {
-          const text = getActiveProject()?.narrative?.trim() || '';
-          narrBtn.classList.toggle('filled', Boolean(text));
-          narrBtn.title = text || 'Klik untuk mengisi narasi & membuka bank kalimat';
-          narrBtn.replaceChildren(
-            text ? h('span', { class: 'ic' }, icon('check')) : '', // (bukan null: replaceChildren menulisnya sebagai teks)
-            h('span', { class: 'txt' }, text || '+ Isi narasi…'),
-          );
-        }
-
-        refreshProjUI = () => {
-          const p = getActiveProject();
-          refreshProjSelect();
-          uCell.setValue(p?.understanding ?? '');
-          iCell.setValue(p?.inquiry ?? '');
-          refreshNarrBtn();
-        };
-        refreshProjUI();
-
-        projCells = [
-          h('td', { class: 'gl' }, h('div', { class: 'cell-proj-wrap' }, projSelect, moreBadge)),
-          uCell.td,
-          iCell.td,
-          h('td', {}, narrBtn),
-        ];
-      }
-
-      // 3. Sel Kehadiran (S, I, A → otomatis hitung % di Rapor)
-      const attInput = h('input', {
-        class: 'att-in', value: fields.attendance, placeholder: 'mis. 98% (Present)', 'aria-label': `Kehadiran ${s.name}`,
-        dataset: { row: String(rowIdx), col: 'att' },
-        oninput: (e) => { fields.attendance = e.target.value; changed(); },
-        onkeydown: (e) => {
-          if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); moveFocus('att', rowIdx, 1); }
-          else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocus('att', rowIdx, -1); }
-        },
-      });
-      const makeDayCell = (key, colKey, label, first = false) => h('td', { class: first ? 'c gl' : 'c' },
-        h('input', {
-          class: 'sia-in', inputmode: 'numeric', value: fields[key] ?? '', placeholder: '·',
-          'aria-label': `${label} ${s.name}`,
-          dataset: { row: String(rowIdx), col: colKey },
-          oninput: (e) => {
-            fields[key] = parseDayInput(e.target.value);
-            const calc = calcAttendanceSia(fields.attendance_s, fields.attendance_i, fields.attendance_a, effDays);
-            if (calc !== null) {
-              fields.attendance = calc;
-              attInput.value = calc;
-            }
-            changed();
-          },
-          onkeydown: (e) => {
-            if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); moveFocus(colKey, rowIdx, 1); }
-            else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocus(colKey, rowIdx, -1); }
-          },
-        }));
-
-      const tr = h('tr', {},
-        h('td', { class: 'sticky idx' }, rowIdx + 1),
-        h('td', { class: 'sticky2 name' },
-          h('div', { class: 'cell-who' },
-            dotEl,
-            h('button', {
-              type: 'button', class: 'cell-student-btn', title: 'Buka tampilan lengkap per siswa',
-              onclick: () => switchMode('student', s.id),
-            }, s.name))),
-        atlCells.map((c) => c.td),
-        projCells,
-        makeDayCell('attendance_s', 'att-s', 'Sakit', true),
-        makeDayCell('attendance_i', 'att-i', 'Izin'),
-        makeDayCell('attendance_a', 'att-a', 'Alpa'),
-        h('td', {}, attInput));
-
-      const rowCtrl = {
-        tr,
-        view: v,
-        fields,
-        changed,
-        paintDot,
-        getActiveProject,
-        ensureProject,
-        refreshProjUI,
-      };
-      rows.push(rowCtrl);
-      rowById.set(s.id, rowCtrl);
-      return tr;
-    }));
-
-    onSaved = (view) => {
-      const r = rowById.get(view.student.id);
-      if (r) {
-        r.view = view;
-        r.paintDot(view);
-      }
-    };
-
-    /** Modal cepat untuk mengisi narasi + Bank kalimat langsung dari mode tabel, bisa lanjut antar siswa. */
-    function openQuickNarrative(startIdx) {
-      let curIdx = startIdx;
-      const modal = openModal({ title: 'Narasi proyek', wide: true, body: h('div', {}) });
-
-      function drawModal(idx) {
-        curIdx = idx;
-        const r = rows[idx];
-        const s = r.view.student;
-        const hadProject = Boolean(r.getActiveProject());
-        const p = r.ensureProject();
-        r.refreshProjUI();
-        if (p && !hadProject) r.changed(); // proyek baru dibuat → simpan, supaya layar = data
-        if (!p) {
-          modal.setBody(h('p', { class: 'note warn' }, 'Belum ada proyek di Pengaturan.'));
-          return;
-        }
-        const projCfg = settings.projects.find((pc) => pc.id === p.project_id);
-        const phraseBox = h('div', {});
-        const ta = autoGrow(h('textarea', {
-          rows: 3, value: p.narrative, placeholder: 'Narasi dari fasilitator, dalam bahasa Inggris',
-          oninput: (e) => {
-            p.narrative = e.target.value;
-            r.refreshProjUI();
-            r.changed();
-          },
-        }));
-
-        const drawPhrases = () => {
-          const theme = settings.projects.find((pc) => pc.id === p.project_id)?.theme;
-          const predicate = localGrade(p.understanding, settings.grading).code;
-          phraseBox.replaceChildren(phraseBankList({
-            settings, student: s, theme, predicate,
-            getText: () => ta.value,
-            onPick: (sentence) => {
-              ta.value = appendSentence(ta.value, sentence);
-              ta.dispatchEvent(new Event('input'));
-            },
-          }));
-        };
-        drawPhrases();
-
-        modal.dlg.querySelector('.modal-head h2').textContent = `${s.name} (${idx + 1}/${rows.length})`;
-        modal.setBody(h('div', { class: 'stack' },
-          h('div', { class: 'project', style: { marginTop: '0' } },
-            h('div', { class: 'project-head' },
-              h('select', {
-                'aria-label': 'Proyek',
-                onchange: (e) => {
-                  p.project_id = e.target.value;
-                  r.refreshProjUI();
-                  r.changed();
-                  drawPhrases();
-                },
-              }, settings.projects.map((pc) => h('option', { value: pc.id, selected: pc.id === p.project_id }, projectLabel(pc)))),
-              projCfg?.central_idea ? h('span', { class: 'small muted', style: { flex: 1 } }, projCfg.central_idea) : null),
-            h('div', { class: 'pair' },
-              h('span', { class: 'lbl' }, 'Understanding Level'), h('span', { class: 'lbl' }, 'Inquiry & Research Skills'),
-              ratingControl(p.understanding, settings.grading, ranks, (val) => {
-                p.understanding = val;
-                r.refreshProjUI();
-                r.changed();
-                drawPhrases();
-              }, { label: 'Understanding Level' }),
-              ratingControl(p.inquiry, settings.grading, ranks, (val) => {
-                p.inquiry = val;
-                r.refreshProjUI();
-                r.changed();
-              }, { label: 'Inquiry & Research Skills' }))),
-          h('label', { class: 'field' },
-            h('span', { class: 'lbl' }, 'Teacher Narrative Feedback'),
-            ta),
-          h('div', { class: 'row' },
-            button('Draf otomatis', { kind: 'sm', onClick: async () => {
-              const draft = makeDraft(s, p);
-              if (!draft) { toast('Isi Understanding Level dulu, supaya draf sesuai pencapaian siswa', 'error'); return; }
-              if (ta.value.trim() && !(await confirmBox('Ganti narasi yang sudah ada dengan draf baru?', { ok: 'Ganti' }))) return;
-              ta.value = draft;
-              ta.dispatchEvent(new Event('input'));
-            } }),
-            h('span', { class: 'small muted' }, 'Disusun dari bank kalimat sesuai Understanding Level; tetap bisa disunting.')),
-          phraseBox));
-
-        modal.setActions([
-          { label: '← Siswa sebelumnya', kind: 'quiet', disabled: idx <= 0, onClick: () => drawModal(curIdx - 1) },
-          { label: 'Siswa berikutnya →', disabled: idx >= rows.length - 1, onClick: () => drawModal(curIdx + 1) },
-          { label: 'Selesai', kind: 'primary', onClick: (c) => c() },
-        ]);
-      }
-
-      drawModal(startIdx);
-    }
-
-    sheet = h('div', { class: 'sheet scroll cells-wrap' },
-      h('table', { class: 'ledger cells' }, h('thead', {}, head1, head2), tbody));
-
-    // ---------- Tempel dari Excel (Ctrl+V): blok sel menyebar ke bawah/kanan mulai dari sel aktif.
-    // Kalau kolom pertama yang ditempel berisi nama siswa, baris dicocokkan lewat nama (urutan di
-    // Excel tidak harus sama dengan urutan di sini).
-    const colOrder = [...settings.atl.map((_, i) => `atl-${i}`), ...(hasProj ? ['uoi-u', 'uoi-i'] : []), 'att-s', 'att-i', 'att-a', 'att'];
-    const normName = (t) => String(t).toLowerCase().normalize('NFKD').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-    const rowByName = (raw) => {
-      const n = normName(raw);
-      if (!n) return -1;
-      const exact = rows.findIndex((r) => normName(r.view.student.name) === n);
-      if (exact >= 0) return exact;
-      const starts = rows.map((r, i) => [r, i]).filter(([r]) => normName(r.view.student.name).startsWith(n));
-      return starts.length === 1 ? starts[0][1] : -1;
-    };
-    sheet.addEventListener('paste', (e) => {
-      const t = e.target;
-      if (!(t instanceof HTMLInputElement) || t.dataset.row === undefined || !colOrder.includes(t.dataset.col)) return;
-      const lines = (e.clipboardData?.getData('text/plain') ?? '').replace(/\r/g, '').split('\n');
-      while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
-      const grid = lines.map((l) => l.split('\t'));
-      if (!grid.length || (grid.length === 1 && grid[0].length === 1)) return; // satu nilai: tempel biasa
-      e.preventDefault();
-      const startRow = Number(t.dataset.row);
-      const startCol = colOrder.indexOf(t.dataset.col);
-      const firstCells = grid.map((r) => r[0]).filter((c) => c.trim());
-      const byName = grid[0].length > 1 && firstCells.length
-        && firstCells.filter((c) => rowByName(c) >= 0).length >= Math.ceil(firstCells.length / 2);
-      const visibleRows = rows.map((r, i) => i).filter((i) => i >= startRow && !rows[i].tr.hidden);
-      let filled = 0;
-      let invalid = 0;
-      let extraRows = 0;
-      const unknownNames = [];
-      grid.forEach((cells, li) => {
-        let rowIdx;
-        let values = cells;
-        if (byName) {
-          rowIdx = rowByName(cells[0]);
-          values = cells.slice(1);
-          if (rowIdx < 0) { if (cells[0].trim()) unknownNames.push(cells[0].trim()); return; }
-        } else {
-          rowIdx = visibleRows[li];
-          if (rowIdx === undefined) { extraRows++; return; }
-        }
-        values.forEach((raw, ci) => {
-          const colKey = colOrder[startCol + ci];
-          const v = String(raw).trim();
-          if (!colKey || !v) return; // sel kosong di Excel tidak menghapus isian
-          const el = sheet.querySelector(`input[data-row="${rowIdx}"][data-col="${colKey}"]`);
-          if (!el || el.disabled) return;
-          el.value = v;
-          el.dispatchEvent(new Event('input'));
-          el.dispatchEvent(new Event('blur'));
-          filled++;
-          if (el.classList.contains('invalid') || (el.classList.contains('sia-in') && parseDayInput(v) === null)) invalid++;
-        });
-      });
-      const parts = [`${filled} sel terisi dari Excel`];
-      if (invalid) parts.push(`${invalid} tidak terbaca (ditandai merah)`);
-      if (extraRows) parts.push(`${extraRows} baris lebih dari jumlah siswa dilewati`);
-      if (unknownNames.length) parts.push(`nama tidak ditemukan: ${unknownNames.slice(0, 3).join(', ')}${unknownNames.length > 3 ? '…' : ''}`);
-      toast(parts.join(' · '), invalid || unknownNames.length || extraRows ? 'error' : 'ok', 7000);
-    });
-
-    /** Isi narasi yang masih kosong untuk semua siswa yang Understanding Level-nya sudah ada. */
-    function draftAllDialog() {
-      const targets = [];
-      let noPredicate = 0;
-      for (const r of rows) {
-        if (r.tr.hidden) continue;
-        const p = r.getActiveProject();
-        if (!p || p.narrative.trim()) continue;
-        if (localGrade(p.understanding, settings.grading).code) targets.push(r); else noPredicate++;
-      }
-      if (!targets.length) {
-        toast(noPredicate
-          ? `Tidak ada yang bisa dibuatkan draf: ${noPredicate} siswa belum diisi Understanding Level-nya`
-          : 'Semua narasi proyek di tabel ini sudah terisi', 'error', 6000);
-        return;
-      }
-      openModal({
-        title: 'Draf narasi otomatis',
-        body: h('div', { class: 'stack' },
-          h('p', {}, `Buat draf narasi untuk ${targets.length} siswa yang narasinya masih kosong. Draf disusun dari bank kalimat sesuai Understanding Level masing-masing (nama, he/she, dan tema proyek otomatis).`),
-          noPredicate ? h('p', { class: 'note warn small' }, `${noPredicate} siswa dilewati karena Understanding Level-nya belum diisi.`) : null,
-          h('p', { class: 'note small' }, 'Narasi yang sudah ada tidak diubah. Draf tetap perlu dibaca dan disesuaikan guru sebelum dicetak.')),
-        actions: [
-          { label: 'Batal', kind: 'quiet', onClick: (c) => c() },
-          { label: `Buat ${targets.length} draf`, kind: 'primary', onClick: (close) => {
-            for (const r of targets) {
-              const p = r.getActiveProject();
-              p.narrative = makeDraft(r.view.student, p);
-              r.refreshProjUI();
-              r.changed();
-            }
-            close();
-            toast(`${targets.length} draf narasi dibuat. Klik tombol narasi di tiap baris untuk membaca & menyunting.`, 'ok', 7000);
-          } },
-        ],
-      });
-    }
-
-    content.append(subbar, sheet);
-    if (onlyIncomplete) setOnlyIncomplete(true);
-    return sheet;
-  }
-
   drawModeTabs();
   drawStage(false);
   ctx.onLeave(flush);
+}
+
+/** Indikator ATL bawaan untuk predikat siswa: teks khusus predikat itu (Pengaturan), atau indikator umum. */
+function atlIndicator(a, grade, grading) {
+  const code = localGrade(grade, grading).code;
+  const t = code ? (a.levels?.[code] || '').trim() : '';
+  return t || a.indicator;
 }
 
 function makeFields(s, settings) {
@@ -1048,7 +513,7 @@ async function previewModal(id, name) {
     body: frame,
     actions: [
       { label: 'Tutup', kind: 'quiet', onClick: (c) => c() },
-      { label: 'Cetak / Simpan PDF', kind: 'primary', onClick: () => frame.contentWindow?.print() },
+      { label: 'Cetak / Simpan PDF', kind: 'primary', onClick: () => (isMac ? printOnMac([id]) : frame.contentWindow?.print()) },
     ],
   });
 }

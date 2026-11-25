@@ -6,7 +6,7 @@
 //! diubah tanpa mengubah program.
 
 use crate::grading::fmt_num;
-use crate::model::{grade_class_label, AppData, Settings};
+use crate::model::{grade_class_label, normalize_info_fields, AppData, Settings};
 use crate::view::{long_mark_text, mark_text, student_view};
 use minijinja::value::Serde;
 use minijinja::{AutoEscape, Environment};
@@ -54,8 +54,18 @@ struct Project {
     narrative: String,
 }
 
+/// Satu baris kotak identitas, sudah sesuai Pengaturan (label, urutan, yang disembunyikan).
+#[derive(Serialize)]
+struct InfoItem {
+    key: String,
+    label: String,
+    value: String,
+}
+
 #[derive(Serialize)]
 struct ReportStudent {
+    /// Kotak identitas siswa (hanya baris yang ditampilkan, urut sesuai Pengaturan).
+    info: Vec<InfoItem>,
     name: String,
     student_id: String,
     grade_class: String,
@@ -125,6 +135,7 @@ fn normalize_logo_pos<'a>(pos: &str, default: &'a str) -> &'a str {
 fn build_context(data: &AppData, ids: &[String]) -> Context {
     let st = &data.settings;
     let show = st.show_numeric_score;
+    let info_fields = normalize_info_fields(&st.info_fields);
     let students = ids
         .iter()
         .filter_map(|id| data.students.iter().find(|s| &s.id == id))
@@ -139,7 +150,29 @@ fn build_context(data: &AppData, ids: &[String]) -> Context {
                 ("", nisn) => format!("NISN {nisn}"),
                 (nis, nisn) => format!("{nis} / NISN {nisn}"),
             };
+            let info = info_fields
+                .iter()
+                .filter(|f| f.show)
+                .map(|f| {
+                    let value = match f.key.as_str() {
+                        "name" => s.name.trim().to_string(),
+                        "class" if f.format == "class" => s.class_name.trim().to_string(),
+                        "class" => grade_class_label(&s.class_name),
+                        "student_id" => match f.format.as_str() {
+                            "nis" => s.nis.trim().to_string(),
+                            "nisn" => s.nisn.trim().to_string(),
+                            _ => student_id.clone(),
+                        },
+                        "homeroom" => homeroom.clone(),
+                        "academic_year" => st.academic_year.trim().to_string(),
+                        "attendance" => s.attendance.trim().to_string(),
+                        _ => String::new(),
+                    };
+                    InfoItem { key: f.key.clone(), label: f.label.clone(), value: if value.is_empty() { "—".into() } else { value } }
+                })
+                .collect();
             ReportStudent {
+                info,
                 name: s.name.trim().to_string(),
                 student_id,
                 grade_class: grade_class_label(&s.class_name),
@@ -289,6 +322,43 @@ mod tests {
         assert!(html.contains("Who We Are"));
         assert!(html.contains("96–100"), "keterangan rentang nilai");
         assert!(!html.contains("AI responses"), "catatan AI dari template lama tidak ikut");
+    }
+
+    #[test]
+    fn identity_box_follows_settings() {
+        use crate::model::InfoField;
+        let s = Student {
+            id: "1".into(),
+            name: "Made Dewi".into(),
+            class_name: "IX-1".into(),
+            nis: "1234".into(),
+            nisn: "0098765432".into(),
+            ..Default::default()
+        };
+        let mut d = data_with(s);
+        // bawaan: semua baris dengan label bahasa Inggris
+        let html = render(&d, &["1".into()], None).unwrap().replace("&#x2f;", "/");
+        assert!(html.contains("<b>Student ID:</b> 1234 / NISN 0098765432"));
+        assert!(html.contains("<b>Attendance:</b> —"));
+        let pos = |html: &str, t: &str| html.find(t).unwrap();
+        assert!(pos(&html, "Student Name:") < pos(&html, "Grade / Class:"));
+
+        // label diganti, NISN saja, kelas tanpa "Grade", kehadiran disembunyikan, urutan diubah
+        let f = |key: &str, label: &str, show: bool, format: &str| InfoField { key: key.into(), label: label.into(), show, format: format.into() };
+        d.settings.info_fields = vec![
+            f("class", "Kelas", true, "class"),
+            f("name", "Nama Siswa:", true, ""),
+            f("student_id", "NISN", true, "nisn"),
+            f("attendance", "", false, ""),
+        ];
+        let html = render(&d, &["1".into()], None).unwrap().replace("&#x2f;", "/");
+        assert!(html.contains("<b>Kelas:</b> IX-1"));
+        assert!(html.contains("<b>Nama Siswa:</b> Made Dewi"), "titik dua tidak dobel");
+        assert!(html.contains("<b>NISN:</b> 0098765432"));
+        assert!(!html.contains("Attendance") && !html.contains("Student ID"));
+        assert!(pos(&html, "Kelas:") < pos(&html, "Nama Siswa:"));
+        // baris yang tidak ada di daftar (lama) tetap muncul dengan label bawaan
+        assert!(html.contains("<b>Homeroom Teacher:</b>") && html.contains("<b>Academic Year:</b> 2026/2027"));
     }
 
     #[test]

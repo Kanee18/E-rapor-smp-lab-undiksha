@@ -24,6 +24,9 @@ rust_xlsxwriter = "0.102"
 base64 = "0.22"
 argon2 = "0.5"
 password-hash = { version = "0.5", features = ["getrandom"] }
+hmac = "0.12"
+sha1 = "0.10"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 
 [profile.release]
 codegen-units = 1

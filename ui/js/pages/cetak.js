@@ -1,6 +1,6 @@
 // Cetak: pilih siswa → pratinjau → cetak / simpan PDF.
 import { api } from '../api.js';
-import { h, button, swapIn, classTabs, debounce, emptyState, errorText, fitPreview, openModal, toast, toolbar } from '../dom.js';
+import { h, button, swapIn, classTabs, debounce, emptyState, errorText, fitPreview, isMac, openModal, toast, toolbar } from '../dom.js';
 
 export async function render(ctx) {
   const { app, content, actions, setTitle } = ctx;
@@ -25,6 +25,7 @@ export async function render(ctx) {
   } }));
   actions.appendChild(button('Cetak / Simpan PDF', { kind: 'primary', onClick: () => {
     if (!selected.size) { toast('Pilih minimal satu siswa', 'error'); return; }
+    if (isMac) { printOnMac(views.map((v) => v.student.id).filter((id) => selected.has(id))); return; }
     frame.contentWindow?.focus();
     frame.contentWindow?.print();
   } }));
@@ -117,7 +118,18 @@ function openLegerModal(app) {
   });
 }
 
-/** Simpan rapor tiap siswa sebagai PDF terpisah (lewat Edge), dengan kemajuan. */
+/** Mac: rapor dijadikan satu PDF lalu dibuka di Preview; tanpa Chrome/Edge dibuka di Safari. */
+export async function printOnMac(ids) {
+  toast('Menyiapkan rapor untuk dicetak…', 'info', 2500);
+  try {
+    const kind = await api.printViaSystem(ids);
+    toast(kind === 'pdf'
+      ? 'Rapor dibuka di Preview. Tekan ⌘P untuk mencetak, atau File → Simpan untuk menyimpan PDF.'
+      : 'Rapor dibuka di Safari. Tekan ⌘P untuk mencetak / menyimpan PDF. (Pasang Google Chrome supaya rapor langsung jadi PDF.)', 'ok', 9000);
+  } catch (e) { toast(errorText(e), 'error'); }
+}
+
+/** Simpan rapor tiap siswa sebagai PDF terpisah (lewat Edge / Chrome), dengan kemajuan. */
 async function exportPdfFlow(ids) {
   let folder;
   try { folder = await api.pickFolder('Pilih folder untuk menyimpan PDF rapor'); } catch (e) { toast(errorText(e), 'error'); return; }

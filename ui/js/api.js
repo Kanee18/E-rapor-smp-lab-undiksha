@@ -29,10 +29,17 @@ export const api = {
   inspectStudentSheet: (path, sheet, mapping = null) => invoke('inspect_student_sheet', { path, sheet, mapping }),
   importStudentsMapped: (path, sheet, mapping, classes) => invoke('import_students_mapped', { path, sheet, mapping, classes }),
   importScores: (path, sheet, classes) => invoke('import_scores', { path, sheet, classes }),
+  inspectScoreSheet: (path, sheet, mapping = null) => invoke('inspect_score_sheet', { path, sheet, mapping }),
+  importScoresMapped: (path, sheet, mapping, classes, apply) =>
+    invoke('import_scores_mapped', { path, sheet, mapping, classes, apply }),
+  inspectProjectSheet: (path, sheet, mapping = null) => invoke('inspect_project_sheet', { path, sheet, mapping }),
+  importProjectScores: (path, sheet, mapping, projectId, classes, apply) =>
+    invoke('import_project_scores', { path, sheet, mapping, project_id: projectId, classes, apply }),
   importAttendance: (path, sheet, classes, effectiveDays, emptyAsZero) =>
     invoke('import_attendance', { path, sheet, classes, effective_days: effectiveDays, empty_as_zero: emptyAsZero }),
 
   renderReport: (ids) => invoke('render_report', { ids }),
+  printViaSystem: (ids) => invoke('print_via_system', { ids }),
   exportTemplate: () => invoke('export_template'),
   resetTemplate: () => invoke('reset_template'),
   openDataFolder: () => invoke('open_data_folder'),
@@ -58,6 +65,10 @@ export const api = {
   securityStatus: () => invoke('security_status'),
   securityUnlock: (password) => invoke('security_unlock', { password }),
   securityResetWithRecovery: (code, newPassword) => invoke('security_reset_with_recovery', { code, new_password: newPassword }),
+  securityResetWithAuthenticator: (code, newPassword) => invoke('security_reset_with_authenticator', { code, new_password: newPassword }),
+  securityAuthenticatorBegin: (current) => invoke('security_authenticator_begin', { current }),
+  securityAuthenticatorConfirm: (code) => invoke('security_authenticator_confirm', { code }),
+  securityAuthenticatorRemove: (current) => invoke('security_authenticator_remove', { current }),
   securitySetPassword: (current, newPassword) => invoke('security_set_password', { current, new_password: newPassword }),
   securityDisable: (current) => invoke('security_disable', { current }),
   securitySetAutoLock: (minutes) => invoke('security_set_auto_lock', { minutes }),

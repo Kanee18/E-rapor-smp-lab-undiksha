@@ -6,6 +6,10 @@
 //! - Selama terkunci, semua perintah data ditolak di sisi Rust (bukan hanya disembunyikan).
 //! - Setelah 5 kali salah, percobaan berikutnya harus menunggu (30 dtk, lalu berlipat, maks. 10 mnt).
 //!
+//! - Lupa kata sandi: kode pemulihan (sekali tampil), atau — kalau dihubungkan — kode 6 angka
+//!   dari Google Authenticator di HP guru (lihat `totp.rs`). Rahasia authenticator harus bisa
+//!   dibaca untuk memeriksa kode, jadi tersimpan apa adanya di `keamanan.json`.
+//!
 //! Batasan yang disengaja: file data tidak dienkripsi. Kunci ini melindungi pemakaian
 //! aplikasi di laptop bersama, bukan file yang disalin keluar.
 
@@ -30,6 +34,16 @@ struct SecurityFile {
     recovery_hash: String,
     /// Kunci otomatis setelah sekian menit tidak dipakai; 0 = tidak pernah.
     auto_lock_minutes: u32,
+    /// Rahasia Google Authenticator (base32). Kosong = belum dihubungkan.
+    authenticator_secret: String,
+}
+
+/// Data untuk menghubungkan Google Authenticator: kode QR + kunci manual.
+#[derive(Debug, Clone, Serialize)]
+pub struct AuthenticatorSetup {
+    pub qr_svg: String,
+    /// Kunci yang diketik manual kalau kamera HP tidak bisa memindai, dikelompokkan per 4 huruf.
+    pub key: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -37,6 +51,8 @@ pub struct SecurityStatus {
     pub enabled: bool,
     pub locked: bool,
     pub auto_lock_minutes: u32,
+    /// Google Authenticator sudah dihubungkan (bisa dipakai saat lupa kata sandi).
+    pub authenticator: bool,
     /// Terisi kalau keamanan.json rusak.
     pub problem: Option<String>,
 }
@@ -49,6 +65,27 @@ pub struct Security {
     blocked_until: Option<Instant>,
     /// Pesan kalau keamanan.json rusak: aplikasi tetap terkunci dan tidak bisa dibuka.
     broken: Option<String>,
+    /// Rahasia authenticator yang sedang dihubungkan (belum disimpan sampai kodenya dicoba).
+    pending_secret: Option<Vec<u8>>,
+}
+
+/// "7 jam 5 menit" / "12 menit".
+fn human_duration(secs: i64) -> String {
+    let m = (secs.abs() + 30) / 60;
+    match (m / 60, m % 60) {
+        (0, m) => format!("{m} menit"),
+        (h, 0) => format!("{h} jam"),
+        (h, m) => format!("{h} jam {m} menit"),
+    }
+}
+
+fn clock_message(off: i64) -> String {
+    format!(
+        "Kodenya benar, tapi jam laptop ini {} sekitar {}. Betulkan jam dan zona waktu laptop \
+         (Pengaturan Windows → Waktu & bahasa → nyalakan \"Atur waktu otomatis\" dan pilih zona WITA/WIB yang benar), lalu coba lagi.",
+        if off > 0 { "terlambat" } else { "terlalu cepat" },
+        human_duration(off)
+    )
 }
 
 fn hash(secret: &str) -> Result<String, String> {
@@ -116,13 +153,13 @@ impl Security {
             Err(e) => return Err(format!("{FILE_NAME} tidak bisa dibaca: {e}")),
         };
         let locked = !cfg.password_hash.is_empty();
-        Ok(Self { file, cfg, locked, failures: 0, blocked_until: None, broken: None })
+        Ok(Self { file, cfg, locked, failures: 0, blocked_until: None, broken: None, pending_secret: None })
     }
 
     /// Dipakai kalau `open` gagal: terkunci permanen dengan penjelasan, bukan tanpa kata sandi.
     pub fn broken(dir: &Path, message: String) -> Self {
         let cfg = SecurityFile { password_hash: "!".into(), ..Default::default() };
-        Self { file: dir.join(FILE_NAME), cfg, locked: true, failures: 0, blocked_until: None, broken: Some(message) }
+        Self { file: dir.join(FILE_NAME), cfg, locked: true, failures: 0, blocked_until: None, broken: Some(message), pending_secret: None }
     }
 
     pub fn enabled(&self) -> bool {
@@ -138,6 +175,7 @@ impl Security {
             enabled: self.enabled(),
             locked: self.locked,
             auto_lock_minutes: self.cfg.auto_lock_minutes,
+            authenticator: self.enabled() && !self.cfg.authenticator_secret.is_empty(),
             problem: self.broken.clone(),
         }
     }
@@ -267,7 +305,98 @@ impl Security {
         self.record_success();
         self.cfg.password_hash.clear();
         self.cfg.recovery_hash.clear();
+        self.cfg.authenticator_secret.clear();
         self.save()
+    }
+
+    // ------------------------------------------------------------ Google Authenticator
+
+    /// Langkah 1: periksa kata sandi, buat rahasia baru, tampilkan QR. Belum disimpan.
+    pub fn authenticator_begin(&mut self, current: &str, account: &str) -> Result<AuthenticatorSetup, String> {
+        if self.locked {
+            return Err("Aplikasi terkunci.".into());
+        }
+        if !self.enabled() {
+            return Err("Pasang kata sandi dulu.".into());
+        }
+        self.throttle()?;
+        if !verify(current, &self.cfg.password_hash) {
+            return Err(self.record_failure());
+        }
+        self.record_success();
+        let mut secret = vec![0u8; 20];
+        OsRng.fill_bytes(&mut secret);
+        let b32 = crate::totp::base32(&secret);
+        let qr_svg = crate::totp::qr_svg(&crate::totp::otpauth_uri(&b32, account))?;
+        let key = b32.as_bytes().chunks(4).map(|c| String::from_utf8_lossy(c).to_string()).collect::<Vec<_>>().join(" ");
+        self.pending_secret = Some(secret);
+        Ok(AuthenticatorSetup { qr_svg, key })
+    }
+
+    /// Langkah 2: kode dari HP cocok → simpan. Memastikan HP benar-benar sudah tersambung.
+    pub fn authenticator_confirm(&mut self, code: &str) -> Result<(), String> {
+        if self.locked {
+            return Err("Aplikasi terkunci.".into());
+        }
+        let Some(secret) = self.pending_secret.clone() else {
+            return Err("Mulai lagi dari tombol Hubungkan.".into());
+        };
+        match crate::totp::check(&secret, code, crate::totp::now_unix()) {
+            crate::totp::Check::Ok => {
+                self.cfg.authenticator_secret = crate::totp::base32(&secret);
+                self.save()?;
+                self.pending_secret = None;
+                Ok(())
+            }
+            crate::totp::Check::ClockOff(off) => Err(clock_message(off)),
+            crate::totp::Check::Wrong => Err("Kodenya belum cocok. Ketik 6 angka yang sedang tampil di Google Authenticator untuk E-Raport.".into()),
+        }
+    }
+
+    pub fn authenticator_remove(&mut self, current: &str) -> Result<(), String> {
+        if self.locked {
+            return Err("Aplikasi terkunci.".into());
+        }
+        self.throttle()?;
+        if !verify(current, &self.cfg.password_hash) {
+            return Err(self.record_failure());
+        }
+        self.record_success();
+        self.cfg.authenticator_secret.clear();
+        self.save()
+    }
+
+    /// Lupa kata sandi: kode 6 angka dari Google Authenticator + kata sandi baru.
+    /// Kode pemulihan tidak berubah.
+    pub fn reset_with_authenticator(&mut self, code: &str, new_password: &str) -> Result<(), String> {
+        if let Some(msg) = &self.broken {
+            return Err(msg.clone());
+        }
+        if !self.enabled() {
+            return Err("Kata sandi belum dipasang.".into());
+        }
+        let Some(secret) = crate::totp::base32_decode(&self.cfg.authenticator_secret).filter(|s| !s.is_empty()) else {
+            return Err("Google Authenticator belum dihubungkan di laptop ini. Pakai kode pemulihan.".into());
+        };
+        self.throttle()?;
+        match crate::totp::check(&secret, code, crate::totp::now_unix()) {
+            crate::totp::Check::Ok => {}
+            crate::totp::Check::ClockOff(off) => {
+                // tetap dihitung sebagai percobaan, supaya tidak bisa dipakai menebak tanpa batas
+                self.record_failure();
+                return Err(clock_message(off));
+            }
+            crate::totp::Check::Wrong => {
+                let msg = self.record_failure();
+                return Err(msg.replace("Kata sandi salah", "Kode Google Authenticator salah"));
+            }
+        }
+        check_new_password(new_password)?;
+        self.record_success();
+        self.cfg.password_hash = hash(new_password)?;
+        self.save()?;
+        self.locked = false;
+        Ok(())
     }
 
     pub fn set_auto_lock(&mut self, minutes: u32) -> Result<(), String> {
@@ -297,7 +426,7 @@ mod tests {
     fn off_by_default_and_never_locked() {
         let d = temp_dir("off");
         let s = Security::open(&d).unwrap();
-        assert_eq!(s.status(), SecurityStatus { enabled: false, locked: false, auto_lock_minutes: 10, problem: None });
+        assert_eq!(s.status(), SecurityStatus { enabled: false, locked: false, auto_lock_minutes: 10, authenticator: false, problem: None });
     }
 
     #[test]
@@ -376,6 +505,43 @@ mod tests {
         assert!(b.status().enabled && b.is_locked());
         assert!(b.unlock("apa saja").is_err());
         assert!(b.reset_with_recovery("AAAA", "apa-saja-1").is_err());
+    }
+
+    #[test]
+    fn authenticator_connects_and_resets_forgotten_password() {
+        let d = temp_dir("totp");
+        let mut s = Security::open(&d).unwrap();
+        assert!(s.authenticator_begin("x", "SMP").is_err(), "butuh kata sandi terpasang");
+        let recovery = s.set_password(None, "awal-123").unwrap().unwrap();
+        assert!(s.authenticator_begin("salah", "SMP").is_err());
+        let setup = s.authenticator_begin("awal-123", "SMP").unwrap();
+        assert!(setup.qr_svg.contains("<svg"));
+        let secret = crate::totp::base32_decode(&setup.key).unwrap();
+        let now_code = || format!("{:06}", crate::totp::code_at(&secret, crate::totp::now_unix() / crate::totp::STEP));
+        // belum dikonfirmasi → belum tersimpan
+        assert!(!s.status().authenticator);
+        assert!(s.authenticator_confirm("000000").is_err() || now_code() == "000000");
+        s.authenticator_confirm(&now_code()).unwrap();
+        assert!(s.status().authenticator);
+
+        // lupa kata sandi: buka ulang (terkunci), pakai kode dari HP
+        let mut s = Security::open(&d).unwrap();
+        assert!(s.is_locked() && s.status().authenticator);
+        let wrong = if now_code() == "111111" { "222222" } else { "111111" };
+        assert!(s.reset_with_authenticator(wrong, "baru-456").unwrap_err().contains("Google Authenticator salah"));
+        s.reset_with_authenticator(&now_code(), "baru-456").unwrap();
+        assert!(!s.is_locked());
+        s.lock();
+        s.unlock("baru-456").unwrap();
+        // kode pemulihan lama tetap berlaku
+        s.lock();
+        s.reset_with_recovery(&recovery, "lagi-789").unwrap();
+
+        // diputus → tidak bisa dipakai lagi; mematikan kata sandi juga menghapusnya
+        s.authenticator_remove("lagi-789").unwrap();
+        assert!(!s.status().authenticator);
+        s.lock();
+        assert!(s.reset_with_authenticator(&now_code(), "x-y-z-123").is_err());
     }
 
     #[test]

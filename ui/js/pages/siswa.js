@@ -2,13 +2,16 @@
 import { api } from '../api.js';
 import { h, avatar, button, menuButton, levelOfClass, swapIn, classTabs, confirmBox, emptyState, errorText, link, openModal, searchBox, toast, toolbar } from '../dom.js';
 import { importWizard } from '../import-wizard.js';
-import { rosterEditor } from '../roster-editor.js';
+import { rosterSheet } from '../roster-sheet.js';
 
 export async function render(ctx) {
   const { app, content, actions, setTitle } = ctx;
   setTitle('Data siswa', 'Isi langsung di aplikasi, atau impor dari Dapodik / daftar siswa Excel (SD, SMP, SMA). Yang disimpan hanya nama, NIS, NISN, jenis kelamin, dan kelas.');
   const rerender = async () => { await app.reload(); content.replaceChildren(); actions.replaceChildren(); await render(ctx); };
-  const openRoster = (cls) => rosterEditor(app, cls, (saved) => { app.selectedClass = saved; rerender(); });
+  // Lembar kelas (seperti Excel) dibuka di halaman ini, bukan pop-up. `null` = kelas baru.
+  const openRoster = (cls) => { app.siswaSheet = { cls }; rerender(); };
+  if (app.siswaSheet) return renderSheet(ctx, rerender);
+  ctx.onLeave(null);
 
   const classes = app.classes();
   let filter = app.selectedClass && classes.includes(app.selectedClass) ? app.selectedClass : null;
@@ -40,7 +43,7 @@ export async function render(ctx) {
     tabsBox.replaceChildren(classTabs(classes, filter, (c) => { filter = c; if (c) app.selectedClass = c; draw(); swapIn(tableBox); }, { counts: app.classCounts() }));
     classTools.replaceChildren(
       filter
-        ? button(`Edit daftar ${filter}`, { iconName: 'pen', title: 'Tambah, ubah, hapus, dan atur urutan siswa kelas ini', onClick: () => openRoster(filter) })
+        ? button(`Buka lembar ${filter}`, { iconName: 'pen', title: 'Isi seperti Excel: nama, NIS, NISN, L/P, Sakit/Izin/Alpa, urutan absen', onClick: () => openRoster(filter) })
         : button('Tambah siswa', { iconName: 'plus', onClick: () => editStudent(app, null, rerender) }));
     const list = app.data.students
       .filter((s) => (!filter || s.class_name === filter) && (!query || s.name.toLowerCase().includes(query) || s.nis.includes(query) || s.nisn.includes(query)))
@@ -69,6 +72,29 @@ export async function render(ctx) {
   }
   draw();
   content.append(toolbar(h('div', { class: 'class-tools' }, tabsBox, classTools), searchBox('Cari nama, NIS, atau NISN', (q) => { query = q; draw(); })), tableBox);
+}
+
+/** Lembar kelas seperti Excel di dalam halaman; tersimpan otomatis, ditutup dengan "Tutup lembar". */
+function renderSheet(ctx, rerender) {
+  const { app, content, actions, setTitle } = ctx;
+  const title = (cls) => setTitle(cls ? `Lembar kelas ${cls}` : 'Kelas baru',
+    'Ketik seperti di Excel: daftar siswa dan catatan Sakit/Izin/Alpa. Semua tersimpan otomatis; tutup dan buka lagi kapan saja.');
+  title(app.siswaSheet.cls);
+  const sheet = rosterSheet(app, app.siswaSheet.cls, {
+    onClassName: (name) => { app.siswaSheet.cls = name; app.selectedClass = name; title(name); },
+  });
+  const close = async () => {
+    if (!(await sheet.beforeClose())) return;
+    app.siswaSheet = null;
+    rerender();
+  };
+  actions.append(button('Tutup lembar', { kind: 'primary', iconName: 'check', onClick: close }));
+  ctx.onLeave(async (opts) => {
+    const ok = await sheet.beforeClose(opts);
+    if (ok) { app.siswaSheet = null; await app.reload(); }
+    return ok;
+  });
+  content.append(sheet.node);
 }
 
 /** Simpan daftar siswa ke Excel; file ini bisa diimpor lagi (laptop lain, jenjang lain). */

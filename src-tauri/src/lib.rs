@@ -12,10 +12,13 @@ pub mod leger;
 pub mod model;
 pub mod names;
 pub mod pdf;
+pub mod project_import;
 pub mod report;
 pub mod roster;
+pub mod score_import;
 pub mod security;
 pub mod student_flex;
+pub mod totp;
 pub mod store;
 pub mod view;
 
@@ -71,6 +74,7 @@ pub fn run() {
             commands::import_scores,
             commands::import_attendance,
             commands::render_report,
+            commands::print_via_system,
             commands::export_template,
             commands::reset_template,
             commands::open_data_folder,
@@ -86,6 +90,10 @@ pub fn run() {
             commands::start_new_term,
             commands::save_leger,
             commands::save_class_roster,
+            commands::inspect_project_sheet,
+            commands::import_project_scores,
+            commands::inspect_score_sheet,
+            commands::import_scores_mapped,
             commands::save_student_list,
             commands::pick_folder,
             commands::export_pdfs,
@@ -98,6 +106,10 @@ pub fn run() {
             commands::security_status,
             commands::security_unlock,
             commands::security_reset_with_recovery,
+            commands::security_reset_with_authenticator,
+            commands::security_authenticator_begin,
+            commands::security_authenticator_confirm,
+            commands::security_authenticator_remove,
             commands::security_set_password,
             commands::security_disable,
             commands::security_set_auto_lock,

@@ -82,6 +82,8 @@ pub struct Settings {
     pub show_numeric_score: bool,
     /// Total hari efektif sekolah dalam satu semester (untuk menghitung % kehadiran dari S/I/A).
     pub effective_days: u32,
+    /// Kotak identitas siswa di bagian atas rapor: urutan, label, dan tampil/tidaknya tiap baris.
+    pub info_fields: Vec<InfoField>,
     pub grading: GradingConfig,
     /// Baris-baris bagian 3 (Core Subject). Bisa ditambah/dihapus.
     pub subjects: Vec<SubjectConfig>,
@@ -156,6 +158,7 @@ impl Default for Settings {
             paper_size: "A4".into(),
             show_numeric_score: false,
             effective_days: 100,
+            info_fields: default_info_fields(),
             grading: GradingConfig::default(),
             subjects: default_subjects(),
             atl: default_atl(),
@@ -164,6 +167,69 @@ impl Default for Settings {
             narrative_bank: default_narrative_bank(),
         }
     }
+}
+
+/// Satu baris di kotak identitas siswa (bagian atas rapor).
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct InfoField {
+    /// Isian yang ditampilkan: "name", "class", "student_id", "homeroom", "academic_year", "attendance".
+    pub key: String,
+    /// Tulisan label di rapor, mis. "Student ID" atau "NISN". Kosong = label bawaan.
+    pub label: String,
+    pub show: bool,
+    /// Bentuk isian. class: "grade" = "Grade 9 (IX-1)", "class" = "IX-1".
+    /// student_id: "both" = NIS / NISN, "nis" = NIS saja, "nisn" = NISN saja.
+    pub format: String,
+}
+
+/// (kunci, label bawaan, bentuk bawaan) — urutan bawaan di rapor.
+pub const INFO_KEYS: [(&str, &str, &str); 6] = [
+    ("name", "Student Name", ""),
+    ("class", "Grade / Class", "grade"),
+    ("student_id", "Student ID", "both"),
+    ("homeroom", "Homeroom Teacher", ""),
+    ("academic_year", "Academic Year", ""),
+    ("attendance", "Attendance", ""),
+];
+
+pub fn default_info_fields() -> Vec<InfoField> {
+    INFO_KEYS
+        .iter()
+        .map(|(key, label, format)| InfoField { key: (*key).into(), label: (*label).into(), show: true, format: (*format).into() })
+        .collect()
+}
+
+/// Rapikan daftar identitas dari Pengaturan: buang kunci asing/ganda, isi label kosong
+/// dengan label bawaan, dan tambahkan baris yang hilang (tampil) di akhir.
+pub fn normalize_info_fields(fields: &[InfoField]) -> Vec<InfoField> {
+    let mut out: Vec<InfoField> = Vec::new();
+    for f in fields {
+        let key = f.key.trim();
+        let Some((_, label, format)) = INFO_KEYS.iter().find(|(k, _, _)| *k == key) else { continue };
+        if out.iter().any(|o| o.key == key) {
+            continue;
+        }
+        let formats: &[&str] = match key {
+            "class" => &["grade", "class"],
+            "student_id" => &["both", "nis", "nisn"],
+            _ => &[""],
+        };
+        // titik dua ditambahkan sendiri oleh rapor
+        let own = f.label.trim().trim_end_matches([':', '：']).trim();
+        out.push(InfoField {
+            key: key.into(),
+            label: if own.is_empty() { (*label).into() } else { own.into() },
+            show: f.show,
+            format: if formats.contains(&f.format.as_str()) { f.format.clone() } else { (*format).into() },
+        });
+    }
+    for d in default_info_fields() {
+        if !out.iter().any(|o| o.key == d.key) {
+            out.push(d);
+        }
+    }
+    out
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -247,7 +313,20 @@ pub struct SubjectConfig {
 pub struct AtlConfig {
     pub id: String,
     pub name: String,
+    /// Indikator umum: dipakai kalau predikat siswa belum punya teks sendiri di `levels`.
     pub indicator: String,
+    /// Indikator per predikat (kode predikat, mis. "EE" → teks). Kosong = pakai `indicator`.
+    pub levels: BTreeMap<String, String>,
+}
+
+impl AtlConfig {
+    /// Indikator bawaan untuk siswa dengan predikat `code` (teks predikat itu, atau indikator umum).
+    pub fn indicator_for(&self, code: Option<&str>) -> &str {
+        code.and_then(|c| self.levels.get(c))
+            .map(|t| t.trim())
+            .filter(|t| !t.is_empty())
+            .unwrap_or(&self.indicator)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -385,6 +464,7 @@ fn default_atl() -> Vec<AtlConfig> {
             id: (*id).into(),
             name: (*name).into(),
             indicator: (*ind).into(),
+            levels: BTreeMap::new(),
         })
         .collect()
 }

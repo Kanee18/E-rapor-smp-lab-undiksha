@@ -258,7 +258,7 @@ pub fn parse_students(grid: &Grid) -> Result<Vec<StudentRow>, String> {
         // sekolah di rekap nilai; kolom Rombel Dapodik kadang belum diperbarui.
         let class_from_col = cols
             .class
-            .map(|c| normalize_class(&cell_text(cell(grid, r, c))))
+            .map(|c| crate::student_flex::tidy_class(&cell_text(cell(grid, r, c))))
             .filter(|c| !c.is_empty());
         let class_name = section.clone().or_else(|| class_from_col.clone()).unwrap_or_default();
         let rombel_conflict = class_from_col.filter(|c| *c != class_name);
@@ -468,7 +468,11 @@ pub fn apply_students(data: &mut AppData, rows: Vec<StudentRow>, classes: &[Stri
     let wanted = wanted_set(classes);
     let mut report = StudentImportReport::default();
     let mut seen_classes: Vec<String> = Vec::new();
-    for row in rows.into_iter().filter(|r| wanted.contains(&r.class_name)) {
+    let known = crate::student_flex::known_classes(data);
+    for mut row in rows.into_iter().filter(|r| wanted.contains(&r.class_name)) {
+        row.class_name = crate::student_flex::resolve_class(&known, &row.class_name);
+        // spasi ganda / di ujung dari Excel dirapikan ("Made  Dewi " → "Made Dewi")
+        row.name = row.name.split_whitespace().collect::<Vec<_>>().join(" ");
         let norm = normalize_name(&row.name);
         // NISN unik secara nasional. NIS (nomor induk) hanya unik di dalam satu sekolah: SD, SMP,
         // dan SMA punya penomoran sendiri, jadi NIS saja tidak cukup — harus sekelas atau senama,
@@ -568,13 +572,20 @@ pub fn apply_scores(data: &mut AppData, sheet: ScoreSheet, classes: &[String]) -
         subjects: sheet.subjects.clone(),
         ..Default::default()
     };
+    // Baris tanpa nama kelas di file ("") dicocokkan ke gabungan kelas yang dipilih.
+    let known = crate::student_flex::known_classes(data);
+    let chosen: HashSet<String> = classes.iter().map(|c| crate::student_flex::resolve_class(&known, c)).collect();
     let mut by_class: BTreeMap<String, Vec<ScoreRow>> = BTreeMap::new();
-    for row in sheet.rows.into_iter().filter(|r| wanted.contains(&r.class_name)) {
+    for row in sheet.rows.into_iter().filter(|r| r.class_name.is_empty() || wanted.contains(&r.class_name)) {
         by_class.entry(row.class_name.clone()).or_default().push(row);
     }
     for (class_name, rows) in by_class {
+        let target = crate::student_flex::resolve_class(&known, &class_name);
         let idx: Vec<usize> = (0..data.students.len())
-            .filter(|&i| data.students[i].class_name == class_name)
+            .filter(|&i| {
+                let c = &data.students[i].class_name;
+                if class_name.is_empty() { chosen.contains(c) } else { *c == target }
+            })
             .collect();
         let cand: Vec<String> = idx.iter().map(|&i| data.students[i].name.clone()).collect();
         let queries: Vec<String> = rows.iter().map(|r| r.name.clone()).collect();
@@ -935,7 +946,7 @@ pub fn parse_attendance(grid: &Grid, sheet_name: &str) -> Result<AttendanceSheet
         }
         let class_from_col = cols
             .class
-            .map(|c| normalize_class(&cell_text(cell(grid, r, c))))
+            .map(|c| crate::student_flex::tidy_class(&cell_text(cell(grid, r, c))))
             .filter(|c| !c.is_empty());
         let class_name = class_from_col.or_else(|| section.clone()).unwrap_or_default();
 
@@ -991,6 +1002,8 @@ pub fn apply_attendance(
 
     // Kelompokkan per kelas. Kalau baris di file tidak punya nama kelas (""),
     // cocokkan terhadap gabungan siswa di kelas-kelas yang dipilih (`wanted`).
+    let known = crate::student_flex::known_classes(data);
+    let chosen: HashSet<String> = classes.iter().map(|c| crate::student_flex::resolve_class(&known, c)).collect();
     let mut by_class: BTreeMap<String, Vec<AttendanceRow>> = BTreeMap::new();
     for row in sheet.rows {
         if row.class_name.is_empty() || wanted.contains(&row.class_name) {
@@ -999,12 +1012,13 @@ pub fn apply_attendance(
     }
 
     for (class_name, rows) in by_class {
+        let target = crate::student_flex::resolve_class(&known, &class_name);
         let idx: Vec<usize> = (0..data.students.len())
             .filter(|&i| {
                 if class_name.is_empty() {
-                    wanted.is_empty() || wanted.contains(&data.students[i].class_name)
+                    chosen.is_empty() || chosen.contains(&data.students[i].class_name)
                 } else {
-                    data.students[i].class_name == class_name
+                    data.students[i].class_name == target
                 }
             })
             .collect();

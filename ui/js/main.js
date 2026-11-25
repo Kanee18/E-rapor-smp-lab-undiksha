@@ -1,6 +1,6 @@
 // Navigasi antar halaman + data global aplikasi.
 import { api } from './api.js';
-import { h, clear, enterAnim, icon, tile, toast, errorText, openModal } from './dom.js';
+import { h, clear, enterAnim, icon, isMac, shortcut, tile, toast, errorText, openModal } from './dom.js';
 import { STEP } from './steps.js';
 import { showLockScreen } from './lock.js';
 import { backupStatus } from './pages/data.js';
@@ -181,8 +181,8 @@ function renderRail() {
   );
   if (app.security.enabled) {
     document.getElementById('rail-foot').appendChild(
-      h('button', { type: 'button', class: 'rail-lock', title: 'Kunci aplikasi (Ctrl+L)', onclick: () => lockApp() },
-        icon('lock'), h('span', {}, 'Kunci aplikasi'), h('kbd', {}, 'Ctrl+L')));
+      h('button', { type: 'button', class: 'rail-lock', title: `Kunci aplikasi (${shortcut('L')})`, onclick: () => lockApp() },
+        icon('lock'), h('span', {}, 'Kunci aplikasi'), h('kbd', {}, shortcut('L'))));
   }
 }
 
@@ -361,7 +361,7 @@ const idleCheck = () => {
 setInterval(idleCheck, 15_000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) idleCheck(); });
 window.addEventListener('keydown', (e) => {
-  if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'l' && app.security.enabled && !locking) {
+  if ((isMac ? e.metaKey : e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'l' && app.security.enabled && !locking) {
     e.preventDefault();
     lockApp();
   }

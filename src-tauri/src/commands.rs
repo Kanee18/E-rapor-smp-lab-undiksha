@@ -169,6 +169,7 @@ pub fn save_settings(state: State<'_, AppState>, settings: Settings) -> Result<S
         x.category = x.category.trim().to_string();
     }
     fix_ids(&mut s.narrative_bank, |x| (&mut x.id, format!("k{}", x.category)));
+    s.info_fields = crate::model::normalize_info_fields(&s.info_fields);
     for c in &mut s.classes {
         c.name = normalize_class(&c.name);
         c.homeroom_teacher = c.homeroom_teacher.trim().to_string();
@@ -212,7 +213,7 @@ pub fn student_views(state: State<'_, AppState>, class_name: Option<String>) -> 
 
 #[tauri::command(rename_all = "snake_case")]
 pub fn save_student_identity(state: State<'_, AppState>, student: StudentIdentity) -> Result<Student, String> {
-    let name = student.name.trim().to_string();
+    let name = student.name.split_whitespace().collect::<Vec<_>>().join(" ");
     let class_name = normalize_class(&student.class_name);
     if name.is_empty() {
         return Err("Nama siswa wajib diisi".into());
@@ -539,6 +540,71 @@ pub async fn import_students_mapped(
     Ok(report)
 }
 
+/// Pratinjau file nilai mapel berformat bebas: tebakan kolom + beberapa baris pertama.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn inspect_score_sheet(
+    state: State<'_, AppState>,
+    path: String,
+    sheet: String,
+    mapping: Option<crate::score_import::ScoreMapping>,
+) -> Result<crate::score_import::ScorePreview, String> {
+    let data = lock(&state)?.data.clone();
+    crate::score_import::inspect(&data, &PathBuf::from(path), &sheet, mapping)
+}
+
+/// Impor nilai mapel berformat bebas. `apply = false` → hanya laporan pratinjau, data tidak berubah.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn import_scores_mapped(
+    state: State<'_, AppState>,
+    path: String,
+    sheet: String,
+    mapping: crate::score_import::ScoreMapping,
+    classes: Vec<String>,
+    apply: bool,
+) -> Result<crate::score_import::FlexScoreReport, String> {
+    let mut store = lock(&state)?;
+    let mut data = store.data.clone();
+    let report = crate::score_import::import(&mut data, &PathBuf::from(path), &sheet, &mapping, &classes)?;
+    if apply && report.values_set > 0 {
+        store.data = data;
+        store.save()?;
+    }
+    Ok(report)
+}
+
+/// Pratinjau file nilai proyek: tebakan kolom + beberapa baris pertama.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn inspect_project_sheet(
+    state: State<'_, AppState>,
+    path: String,
+    sheet: String,
+    mapping: Option<crate::project_import::ProjectMapping>,
+) -> Result<crate::project_import::ProjectPreview, String> {
+    let data = lock(&state)?.data.clone();
+    crate::project_import::inspect(&data, &PathBuf::from(path), &sheet, mapping)
+}
+
+/// Impor nilai proyek. `apply = false` → hanya laporan pratinjau, data tidak berubah.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn import_project_scores(
+    state: State<'_, AppState>,
+    path: String,
+    sheet: String,
+    mapping: crate::project_import::ProjectMapping,
+    project_id: String,
+    classes: Vec<String>,
+    apply: bool,
+) -> Result<crate::project_import::ProjectImportReport, String> {
+    let mut store = lock(&state)?;
+    let mut data = store.data.clone();
+    let report = crate::project_import::import(&mut data, &PathBuf::from(path), &sheet, &mapping, &project_id, &classes)?;
+    if apply && report.changed_cells + report.new_entries > 0 {
+        store.data = data;
+        store.save()?;
+    }
+    Ok(report)
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub async fn import_scores(
     state: State<'_, AppState>,
@@ -704,15 +770,65 @@ pub fn reveal_path(state: State<'_, AppState>, path: String) -> Result<(), Strin
             .map(|_| ())
             .map_err(|e| format!("Explorer tidak bisa dibuka: {e}"))
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        // Finder dengan berkasnya terpilih
+        std::process::Command::new("open").arg("-R").arg(&path).spawn().map(|_| ()).map_err(|e| e.to_string())
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let dir = PathBuf::from(&path).parent().map(|p| p.to_path_buf()).unwrap_or_default();
-        std::process::Command::new(if cfg!(target_os = "macos") { "open" } else { "xdg-open" })
-            .arg(dir)
-            .spawn()
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+        std::process::Command::new("xdg-open").arg(dir).spawn().map(|_| ()).map_err(|e| e.to_string())
     }
+}
+
+/// Cetak di Mac: dialog cetak dari dalam aplikasi tidak bisa diandalkan di WebKit macOS,
+/// jadi rapor dijadikan satu PDF lalu dibuka di Preview (Cmd+P untuk mencetak).
+/// Tanpa Chrome/Edge: HTML dibuka di browser bawaan (Safari) untuk dicetak dari sana.
+/// Mengembalikan "pdf" atau "html".
+#[tauri::command(rename_all = "snake_case")]
+pub async fn print_via_system(state: State<'_, AppState>, ids: Vec<String>) -> Result<String, String> {
+    let html = {
+        let store = lock(&state)?;
+        let custom = store.custom_template()?;
+        report::render(&store.data, &ids, custom.as_deref())?
+    };
+    if ids.is_empty() {
+        return Err("Pilih minimal satu siswa".into());
+    }
+    let dir = std::env::temp_dir().join("E-Raport cetak");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // berkas cetak lama dibersihkan (hanya milik aplikasi ini, di folder sementara)
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for e in entries.flatten() {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+    let stamp = jiff::Zoned::now().strftime("%Y-%m-%d %H.%M.%S").to_string();
+    let (path, kind) = match crate::pdf::find_edge() {
+        Some(browser) => {
+            let out = dir.join(format!("Rapor {stamp}.pdf"));
+            let job = crate::pdf::PdfJob { html, out: out.clone(), label: "rapor".into() };
+            let failures = crate::pdf::run_jobs(&browser, std::slice::from_ref(&job), 1, &|_, _, _| {})?;
+            if let Some((_, e)) = failures.first() {
+                return Err(format!("PDF gagal dibuat: {e}"));
+            }
+            (out, "pdf")
+        }
+        None => {
+            let out = dir.join(format!("Rapor {stamp}.html"));
+            std::fs::write(&out, html).map_err(|e| e.to_string())?;
+            (out, "html")
+        }
+    };
+    #[cfg(target_os = "macos")]
+    let opener = "open";
+    #[cfg(windows)]
+    let opener = "explorer";
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let opener = "xdg-open";
+    std::process::Command::new(opener).arg(&path).spawn().map_err(|e| format!("Berkas cetak tidak bisa dibuka: {e}"))?;
+    Ok(kind.into())
 }
 
 // ---------------------------------------------------------------- backup luar, pemulihan, semester baru
@@ -844,8 +960,7 @@ pub async fn export_pdfs(
     folder: String,
 ) -> Result<PdfExport, String> {
     use tauri::Emitter;
-    let edge = crate::pdf::find_edge()
-        .ok_or("Microsoft Edge tidak ditemukan di laptop ini. Pakai tombol \"Cetak / Simpan PDF\" sebagai gantinya.")?;
+    let edge = crate::pdf::find_edge().ok_or_else(crate::pdf::no_browser_message)?;
     let (data, custom) = {
         let store = lock(&state)?;
         (store.data.clone(), store.custom_template()?)
@@ -978,6 +1093,35 @@ pub fn security_set_password(
     new_password: String,
 ) -> Result<Option<String>, String> {
     security(&state)?.set_password(current.as_deref(), &new_password)
+}
+
+/// Lupa kata sandi: kode 6 angka Google Authenticator + kata sandi baru.
+#[tauri::command(rename_all = "snake_case")]
+pub fn security_reset_with_authenticator(state: State<'_, AppState>, code: String, new_password: String) -> Result<(), String> {
+    security(&state)?.reset_with_authenticator(&code, &new_password)
+}
+
+/// Hubungkan Google Authenticator (langkah 1): periksa kata sandi, kembalikan kode QR.
+#[tauri::command(rename_all = "snake_case")]
+pub fn security_authenticator_begin(state: State<'_, AppState>, current: String) -> Result<crate::security::AuthenticatorSetup, String> {
+    // nama akun di HP: nama sekolah (tanpa data pribadi), mis. "E-Raport: SMP Lab Undiksha"
+    let account = {
+        let store = lock(&state)?;
+        let school = store.data.settings.school_name.trim().to_string();
+        if school.is_empty() { "Laptop sekolah".to_string() } else { school }
+    };
+    security(&state)?.authenticator_begin(&current, &account)
+}
+
+/// Langkah 2: kode dari HP → simpan.
+#[tauri::command(rename_all = "snake_case")]
+pub fn security_authenticator_confirm(state: State<'_, AppState>, code: String) -> Result<(), String> {
+    security(&state)?.authenticator_confirm(&code)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn security_authenticator_remove(state: State<'_, AppState>, current: String) -> Result<(), String> {
+    security(&state)?.authenticator_remove(&current)
 }
 
 #[tauri::command(rename_all = "snake_case")]

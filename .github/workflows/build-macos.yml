@@ -1,0 +1,78 @@
+# Membuat E-Raport untuk MacBook (Intel & Apple Silicon) di server macOS GitHub,
+# karena aplikasi Mac hanya bisa dibuat di macOS.
+#
+# Cara menjalankan: GitHub → tab Actions → "Build macOS" → Run workflow.
+# Hasil (±20 menit): bagian "Artifacts" di halaman run →
+#   - E-Raport-macOS        : file .dmg untuk dipasang di MacBook
+#   - uji-macos-screenshot  : tangkapan layar aplikasi yang dibuka di server macOS
+#
+# Yang diuji otomatis di macOS: semua unit test (termasuk membuat PDF lewat Chrome),
+# aplikasi bisa dibuka dan tampil (screenshot), dan folder data terbentuk.
+name: Build macOS
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Pasang dependensi
+        run: npm ci
+
+      - name: Unit test di macOS
+        run: cargo test --lib --manifest-path src-tauri/Cargo.toml
+
+      - name: Build aplikasi (universal Intel + Apple Silicon)
+        run: npx tauri build --target universal-apple-darwin --bundles app,dmg
+
+      - name: Uji buka aplikasi
+        run: |
+          APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/E-Raport.app"
+          BIN="$APP/Contents/MacOS/$(ls "$APP/Contents/MacOS" | head -1)"
+          echo "Binary: $BIN"
+          lipo -info "$BIN"
+          codesign -dv "$APP" 2>&1 | head -5 || true
+          export ERAPORT_DATA_DIR="$RUNNER_TEMP/eraport-data"
+          mkdir -p "$ERAPORT_DATA_DIR"
+          "$BIN" > "$RUNNER_TEMP/app.log" 2>&1 &
+          PID=$!
+          sleep 20
+          screencapture -x "$RUNNER_TEMP/uji-macos.png" || true
+          if ! kill -0 $PID 2>/dev/null; then
+            echo "::error::Aplikasi tertutup sendiri saat dibuka"; cat "$RUNNER_TEMP/app.log"; exit 1
+          fi
+          kill $PID || true
+          echo "Isi folder data:"; ls -la "$ERAPORT_DATA_DIR"
+          cat "$RUNNER_TEMP/app.log" || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: E-Raport-macOS
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: uji-macos-screenshot
+          path: ${{ runner.temp }}/uji-macos.png
+          if-no-files-found: ignore

@@ -24,6 +24,19 @@ pub struct RosterRow {
     pub nisn: String,
     #[serde(default)]
     pub gender: String,
+    /// Jumlah hari Sakit/Izin/Alpa. `None` = tidak diubah.
+    #[serde(default)]
+    pub attendance: Option<Sia>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq)]
+pub struct Sia {
+    #[serde(default)]
+    pub s: Option<u32>,
+    #[serde(default)]
+    pub i: Option<u32>,
+    #[serde(default)]
+    pub a: Option<u32>,
 }
 
 #[derive(Debug, Default, Serialize, PartialEq)]
@@ -32,6 +45,8 @@ pub struct RosterResult {
     pub added: usize,
     pub updated: usize,
     pub removed: usize,
+    /// ID siswa sesuai urutan baris yang disimpan (siswa baru mendapat ID di sini).
+    pub ids: Vec<String>,
 }
 
 fn clean(s: &str) -> String {
@@ -65,6 +80,7 @@ pub fn apply_roster(
             nis: r.nis.trim().to_string(),
             nisn: r.nisn.trim().to_string(),
             gender: normalize_gender(&r.gender),
+            attendance: r.attendance,
         })
         .collect();
     // baris yang benar-benar kosong (siswa baru tanpa isi) diabaikan
@@ -78,6 +94,11 @@ pub fn apply_roster(
         let no = i + 1;
         if r.name.is_empty() {
             return Err(format!("Baris {no}: nama siswa belum diisi"));
+        }
+        if let Some(sia) = r.attendance {
+            if [sia.s, sia.i, sia.a].into_iter().flatten().any(|d| d > 366) {
+                return Err(format!("Baris {no} ({}): jumlah hari S/I/A maksimal 366", r.name));
+            }
         }
         if !r.nisn.is_empty() && !(r.nisn.len() == 10 && r.nisn.chars().all(|c| c.is_ascii_digit())) {
             return Err(format!("Baris {no} ({}): NISN harus 10 angka, atau kosongkan saja", r.name));
@@ -137,11 +158,23 @@ pub fn apply_roster(
         data.students.retain(|s| !remove.contains(s.id.as_str()));
         result.removed = before - data.students.len();
     }
+    let effective_days = data.settings.effective_days;
+    let set_sia = |s: &mut Student, sia: Option<Sia>| {
+        let Some(sia) = sia else { return };
+        s.attendance_s = sia.s;
+        s.attendance_i = sia.i;
+        s.attendance_a = sia.a;
+        if let Some(text) = crate::model::format_attendance_sia(sia.s, sia.i, sia.a, effective_days) {
+            s.attendance = text;
+        }
+    };
     for (i, r) in rows.into_iter().enumerate() {
         let order = Some(i as u32 + 1);
         match r.id {
             Some(id) => {
                 let s = data.students.iter_mut().find(|s| s.id == id).expect("sudah diperiksa");
+                set_sia(s, r.attendance);
+                result.ids.push(id);
                 s.name = r.name;
                 s.nis = r.nis;
                 s.nisn = r.nisn;
@@ -153,7 +186,8 @@ pub fn apply_roster(
             None => {
                 let preferred = if r.nis.is_empty() { r.nisn.clone() } else { r.nis.clone() };
                 let id = new_student_id(data, &preferred);
-                data.students.push(Student {
+                result.ids.push(id.clone());
+                let mut s = Student {
                     id,
                     order,
                     name: r.name,
@@ -162,7 +196,9 @@ pub fn apply_roster(
                     gender: r.gender,
                     class_name: class_name.clone(),
                     ..Default::default()
-                });
+                };
+                set_sia(&mut s, r.attendance);
+                data.students.push(s);
                 result.added += 1;
             }
         }
@@ -272,7 +308,7 @@ mod tests {
     use crate::model::{ClassConfig, ScoreEntry};
 
     fn row(id: Option<&str>, name: &str, nis: &str, nisn: &str, g: &str) -> RosterRow {
-        RosterRow { id: id.map(Into::into), name: name.into(), nis: nis.into(), nisn: nisn.into(), gender: g.into() }
+        RosterRow { id: id.map(Into::into), name: name.into(), nis: nis.into(), nisn: nisn.into(), gender: g.into(), attendance: None }
     }
 
     fn sample() -> AppData {
@@ -298,7 +334,8 @@ mod tests {
             row(None, "Ani", "7", "", "P"),
         ];
         let r = apply_roster(&mut d, None, "kelas 1c", rows, &[]).unwrap();
-        assert_eq!(r, RosterResult { class_name: "1-C".into(), added: 2, updated: 0, removed: 0 });
+        assert_eq!((r.class_name.as_str(), r.added, r.updated, r.removed), ("1-C", 2, 0, 0));
+        assert_eq!(r.ids, d.students.iter().map(|s| s.id.clone()).collect::<Vec<_>>());
         let names: Vec<_> = d.students.iter().map(|s| (s.name.as_str(), s.order, s.gender.as_str())).collect();
         assert_eq!(names, [("Zaki Pratama", Some(1), "L"), ("Ani", Some(2), "P")]);
         assert!(d.settings.classes.iter().any(|c| c.name == "1-C"));
@@ -318,6 +355,28 @@ mod tests {
         let r = apply_roster(&mut d, Some("VII-1"), "VII-1", rows, &["b".into(), "103".into()]).unwrap();
         assert_eq!(r.removed, 2);
         assert!(d.students.iter().any(|s| s.id == "c"), "kelas lain tidak tersentuh");
+    }
+
+    #[test]
+    fn attendance_typed_in_the_sheet_is_saved_and_converted() {
+        let mut d = sample();
+        d.settings.effective_days = 100;
+        let mut ayu = row(Some("a"), "Ayu", "101", "", "P");
+        ayu.attendance = Some(Sia { s: Some(2), i: Some(1), a: None });
+        let mut baru = row(None, "Dewi", "", "", "P");
+        baru.attendance = Some(Sia { s: None, i: None, a: Some(4) });
+        let bagus = row(Some("b"), "Bagus", "102", "0012345678", "L"); // S/I/A tidak dikirim → tidak diubah
+        let r = apply_roster(&mut d, Some("VII-1"), "VII-1", vec![ayu, bagus, baru], &[]).unwrap();
+        assert_eq!(r.ids[..2], ["a".to_string(), "b".to_string()]);
+        let get = |id: &str| d.students.iter().find(|s| s.id == id).unwrap();
+        assert_eq!((get("a").attendance_s, get("a").attendance_i, get("a").attendance.as_str()), (Some(2), Some(1), "97% (Present)"));
+        assert_eq!(get(&r.ids[2]).attendance, "96% (Present)");
+        assert_eq!(get("b").attendance_s, None);
+
+        let mut bad = row(Some("a"), "Ayu", "101", "", "P");
+        bad.attendance = Some(Sia { s: Some(400), i: None, a: None });
+        let b = row(Some("b"), "Bagus", "102", "0012345678", "L");
+        assert!(apply_roster(&mut d, Some("VII-1"), "VII-1", vec![bad, b], &[]).unwrap_err().contains("366"));
     }
 
     #[test]

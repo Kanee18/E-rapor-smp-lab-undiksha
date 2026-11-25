@@ -112,16 +112,105 @@ pub fn class_from_text(text: &str) -> Option<String> {
 
 // ---------------------------------------------------------------- penebakan kolom
 
-fn is_name_header(h: &str) -> bool {
-    const NOT_STUDENT: [&str; 13] =
-        ["AYAH", "IBU", "WALI", "ORANG TUA", "ORTU", "SEKOLAH", "GURU", "MAPEL", "PELAJARAN", "BIDANG", "KELAS", "ROMBEL", "KEPALA"];
-    let named = matches!(h, "NAMA" | "NAME" | "STUDENT NAME" | "NAMA MURID")
+pub(crate) fn is_name_header(h: &str) -> bool {
+    const NOT_STUDENT: [&str; 21] = [
+        "AYAH", "IBU", "WALI", "ORANG TUA", "ORTU", "SEKOLAH", "GURU", "MAPEL", "PELAJARAN", "BIDANG", "KELAS", "ROMBEL",
+        "KEPALA", "PARENT", "FATHER", "MOTHER", "TEACHER", "SCHOOL", "SUBJECT", "CLASS", "FILE",
+    ];
+    let named = matches!(h, "NAMA" | "NAME" | "STUDENT NAME" | "NAMA MURID" | "FULL NAME" | "PESERTA DIDIK")
         || h.starts_with("NAMA ")
-        || h.ends_with(" NAMA");
+        || h.ends_with(" NAMA")
+        || h.ends_with(" NAME");
     named && !NOT_STUDENT.iter().any(|w| h.contains(w))
 }
 
-fn col_letter(mut c: usize) -> String {
+/// Apakah baris sesudah judul (`hr`) adalah lanjutan judul (sel digabung, mis. "PH | PTS"),
+/// bukan baris pemisah kelas ("KELAS IX-1") atau baris data.
+pub(crate) fn has_sub_header(grid: &Grid, hr: usize, name_col: usize) -> bool {
+    let Some(row) = grid.get(hr + 1) else { return false };
+    if !cell_text(cell(grid, hr + 1, name_col)).is_empty() {
+        return false;
+    }
+    let texts: Vec<String> = row
+        .iter()
+        .filter_map(|d| match d {
+            calamine::Data::String(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
+            _ => None,
+        })
+        .collect();
+    let numbers = row.iter().filter(|d| matches!(d, calamine::Data::Float(_) | calamine::Data::Int(_))).count();
+    match texts.as_slice() {
+        [] => false,
+        // satu teks saja yang berupa nama kelas = pemisah kelas
+        [only] if numbers == 0 => class_from_text(only).is_none() && canonical_class(only).is_none_or(|c| !c.contains('-')),
+        _ => numbers <= texts.len(),
+    }
+}
+
+/// Tingkat + bagian kelas untuk membandingkan penulisan yang berbeda:
+/// "IX-1", "9-1", "9.1", "Kelas IX 1", "ix.1" → (9, "1"); "9A" / "IX-A" → (9, "A").
+pub fn class_key(raw: &str) -> Option<(u32, String)> {
+    let up = raw.trim().to_uppercase();
+    let t = up.strip_prefix("KELAS").unwrap_or(&up).trim().replace(['.', '/', '_'], "-");
+    let t: String = {
+        // "IX 1" → "IX-1"
+        let parts: Vec<&str> = t.split_whitespace().collect();
+        if parts.len() == 2 && is_grade(parts[0]) { format!("{}-{}", parts[0], parts[1]) } else { parts.join("") }
+    };
+    let c = canonical_class(&t)?;
+    let (g, rest) = c.split_once('-').unwrap_or((c.as_str(), ""));
+    let grade = ROMAN_GRADES.iter().find(|(r, _)| *r == g).map(|(_, n)| *n).or_else(|| g.parse().ok())?;
+    Some((grade, rest.to_string()))
+}
+
+/// Nama kelas di file → nama kelas yang sudah ada di aplikasi kalau penulisannya setara
+/// ("9.1" → "IX-1"). Kalau tidak ada yang setara, nama dari file (dirapikan) dipakai.
+pub fn resolve_class(existing: &[String], raw: &str) -> String {
+    let raw = raw.trim();
+    if raw.is_empty() || existing.iter().any(|c| c == raw) {
+        return raw.to_string();
+    }
+    if let Some(key) = class_key(raw) {
+        let hits: Vec<&String> = existing.iter().filter(|c| class_key(c).as_ref() == Some(&key)).collect();
+        if hits.len() == 1 {
+            return hits[0].clone();
+        }
+    }
+    raw.to_string()
+}
+
+/// Isi sel kelas → nama kelas rapi: "IX-1", "Kelas 9.1" → "9-1", "9A" → "9-A".
+pub fn tidy_class(raw: &str) -> String {
+    let t = raw.trim();
+    canonical_class(t)
+        .filter(|c| c.contains('-') || !t.contains(['.', ' ', '/']))
+        .or_else(|| {
+            class_key(t).map(|(g, rest)| {
+                let roman = ROMAN_GRADES.iter().find(|(_, n)| *n == g).map(|(r, _)| *r).unwrap_or("");
+                // ikut gaya penulisan file: angka tetap angka, romawi tetap romawi
+                let up = t.to_uppercase();
+                let grade = if up.trim_start_matches("KELAS").trim().starts_with(|c: char| c.is_ascii_digit()) { g.to_string() } else { roman.to_string() };
+                if rest.is_empty() { grade } else { format!("{grade}-{rest}") }
+            })
+        })
+        .unwrap_or_else(|| crate::importer::normalize_class(t))
+}
+
+/// Semua nama kelas yang sudah ada di aplikasi (dari siswa dan Pengaturan).
+pub fn known_classes(data: &crate::model::AppData) -> Vec<String> {
+    let mut v: Vec<String> = data
+        .students
+        .iter()
+        .map(|s| s.class_name.clone())
+        .chain(data.settings.classes.iter().map(|c| c.name.clone()))
+        .filter(|c| !c.is_empty())
+        .collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+pub(crate) fn col_letter(mut c: usize) -> String {
     let mut out = Vec::new();
     loop {
         out.push((b'A' + (c % 26) as u8) as char);
@@ -143,7 +232,7 @@ pub fn normalize_gender(raw: &str) -> String {
 }
 
 /// Baris yang jelas bukan siswa: rekap, tanda tangan, catatan.
-fn is_footer_row(name: &str) -> bool {
+pub(crate) fn is_footer_row(name: &str) -> bool {
     let n = normalize_name(name);
     const STARTS: [&str; 14] = [
         "JUMLAH", "TOTAL", "RATA", "KETERANGAN", "MENGETAHUI", "KEPALA", "WALI KELAS", "GURU", "CATATAN", "NIP",
@@ -200,9 +289,7 @@ pub fn guess_mapping(grid: &Grid, sheet_name: &str, file_stem: &str) -> Option<(
         (0..grid[r].len()).find(|&c| is_name_header(&header(cell(grid, r, c)))).map(|c| (r, c))
     })?;
     // judul dua baris (sel digabung): baris bawah kosong di kolom Nama tapi berisi teks di kolom lain
-    let sub = hr + 1 < grid.len()
-        && cell_text(cell(grid, hr + 1, name_col)).is_empty()
-        && grid[hr + 1].iter().any(|d| matches!(d, calamine::Data::String(s) if !s.trim().is_empty()));
+    let sub = has_sub_header(grid, hr, name_col);
     let width = grid.iter().skip(hr).take(60).map(|r| r.len()).max().unwrap_or(0);
     let col_header = |c: usize| {
         let a = header(cell(grid, hr, c));
@@ -225,7 +312,7 @@ pub fn guess_mapping(grid: &Grid, sheet_name: &str, file_stem: &str) -> Option<(
         let h = col_header(c);
         if h.contains("NISN") {
             m.nisn.get_or_insert(c);
-        } else if matches!(h.as_str(), "NIS" | "NIPD" | "NO INDUK" | "NOMOR INDUK" | "INDUK" | "NIS LOKAL")
+        } else if matches!(h.as_str(), "NIS" | "NIPD" | "NO INDUK" | "NOMOR INDUK" | "INDUK" | "NIS LOKAL" | "STUDENT ID" | "ID SISWA" | "STUDENT NUMBER")
             || (h.contains("INDUK") && !h.contains("NISN"))
         {
             m.nis.get_or_insert(c);
@@ -307,7 +394,7 @@ pub fn parse_mapped(grid: &Grid, m: &StudentMapping) -> Result<Vec<StudentRow>, 
             .class
             .map(|c| cell_text(cell(grid, r, c)))
             .filter(|t| !t.is_empty())
-            .map(|t| canonical_class(&t).unwrap_or_else(|| crate::importer::normalize_class(&t)))
+            .map(|t| tidy_class(&t))
             .or_else(|| section.clone())
             .unwrap_or_else(|| fallback_class.clone());
         let order = out.len() as u32 + 1;
@@ -490,5 +577,50 @@ mod tests {
         assert_eq!((m.name, m.class), (Some(2), Some(3)));
         assert_eq!(src, "kolom kelas");
         assert_eq!(parse_mapped(&grid, &m).unwrap()[0].class_name, "7-A");
+    }
+
+    #[test]
+    fn same_class_written_differently() {
+        for raw in ["IX-1", "9-1", "9.1", "Kelas 9.1", "ix.1", "IX 1", "kelas IX-1"] {
+            assert_eq!(class_key(raw), Some((9, "1".to_string())), "{raw}");
+        }
+        assert_eq!(class_key("9A"), Some((9, "A".to_string())));
+        let existing = vec!["IX-1".to_string(), "IX-2".to_string(), "VIII-1".to_string()];
+        assert_eq!(resolve_class(&existing, "9.1"), "IX-1");
+        assert_eq!(resolve_class(&existing, "Kelas 8.1"), "VIII-1");
+        assert_eq!(resolve_class(&existing, "IX-3"), "IX-3", "kelas baru tetap kelas baru");
+        assert_eq!(tidy_class("Kelas 9.1"), "9-1");
+        assert_eq!(tidy_class("ix.2"), "IX-2");
+        assert_eq!(tidy_class("9A"), "9-A");
+    }
+
+    #[test]
+    fn english_headers_and_class_separator_rows() {
+        let s = |v: &str| Data::String(v.into());
+        let n = |v: f64| Data::Float(v);
+        let grid: Grid = vec![
+            vec![s("Student ID"), s("Gender"), s("Full Name"), s("NISN"), s("Class")],
+            vec![n(4101.0), s("F"), s("Made Dewi"), s("0091234561"), s("IX-1")],
+            vec![n(4102.0), s("M"), s("Gede Arya"), s("0091234562"), s("IX-1")],
+        ];
+        let (m, _) = guess_mapping(&grid, "Students", "").unwrap();
+        assert_eq!((m.name, m.nis, m.nisn, m.gender, m.class), (Some(2), Some(0), Some(3), Some(1), Some(4)));
+        assert_eq!(parse_mapped(&grid, &m).unwrap()[0].gender, "P");
+
+        // baris "KELAS IX-1" tepat di bawah judul bukan judul kedua
+        let grid: Grid = vec![
+            vec![s("NO"), s("NAMA"), s("NIS")],
+            vec![s("KELAS IX-1")],
+            vec![n(1.0), s("Made Dewi"), n(4101.0)],
+            vec![s("KELAS IX-2")],
+            vec![n(1.0), s("Gede Arya"), n(4102.0)],
+        ];
+        assert!(!has_sub_header(&grid, 0, 1));
+        let (m, _) = guess_mapping(&grid, "Gabungan", "").unwrap();
+        let rows = parse_mapped(&grid, &m).unwrap();
+        assert_eq!(rows.iter().map(|r| r.class_name.as_str()).collect::<Vec<_>>(), ["IX-1", "IX-2"]);
+        // judul dua baris sungguhan tetap dikenali
+        let grid: Grid = vec![vec![s("No"), s("Nama"), s("Nomor Induk")], vec![Data::Empty, Data::Empty, s("NIS"), s("NISN")]];
+        assert!(has_sub_header(&grid, 0, 1));
     }
 }

@@ -130,7 +130,8 @@ pub fn student_view(s: &Student, settings: &Settings) -> StudentView {
             let entry = s.atl.get(&cfg.id);
             let input = entry.map(|e| e.grade.clone()).unwrap_or_default();
             let result = resolve_input(&input, g);
-            let (indicator, indicator_custom) = pick(entry.map(|e| &e.indicator), &cfg.indicator);
+            let (indicator, indicator_custom) =
+                pick(entry.map(|e| &e.indicator), cfg.indicator_for(result.code.as_deref()));
             match result.status {
                 Status::Ok | Status::BelowScale => progress.atl_done += 1,
                 Status::Empty => atl_empty += 1,
@@ -238,6 +239,26 @@ pub fn long_mark_text(r: &Resolved) -> String {
 mod tests {
     use super::*;
     use crate::model::{ProjectEntry, RatingEntry, ScoreEntry};
+
+    #[test]
+    fn atl_indicator_follows_the_students_grade() {
+        let mut settings = Settings::default();
+        let a = &mut settings.atl[0];
+        a.levels.insert("EE".into(), "Excellent inquirer.".into());
+        a.levels.insert("BE".into(), "   ".into()); // kosong → indikator umum
+        let general = a.indicator.clone();
+        let id = a.id.clone();
+        let view_for = |grade: &str, custom: &str| {
+            let mut s = Student { name: "X".into(), ..Default::default() };
+            s.atl.insert(id.clone(), RatingEntry { grade: grade.into(), indicator: custom.into() });
+            student_view(&s, &settings).atl[0].indicator.clone()
+        };
+        assert_eq!(view_for("EE", ""), "Excellent inquirer.");
+        assert_eq!(view_for("98", ""), "Excellent inquirer."); // angka → predikat EE
+        assert_eq!(view_for("BE", ""), general);
+        assert_eq!(view_for("", ""), general);
+        assert_eq!(view_for("EE", "Khusus siswa ini."), "Khusus siswa ini.");
+    }
 
     #[test]
     fn lines_of_inquiry_strip_numbers() {

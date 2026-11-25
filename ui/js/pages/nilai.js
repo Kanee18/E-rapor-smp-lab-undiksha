@@ -9,7 +9,7 @@ export async function render(ctx) {
   const g = app.data.settings.grading;
   setTitle('Nilai mapel', `Nilai akhir = ${g.weight_ph}% PH + ${g.weight_pts}% PTS${g.round_final ? ', dibulatkan' : ''}, lalu menjadi predikat. Kolom Akhir boleh diisi manual untuk menggantikan rumus.`);
   const rerender = async () => { await app.reload(); content.replaceChildren(); actions.replaceChildren(); await render(ctx); };
-  actions.append(button('Impor nilai dari Excel', { kind: 'primary', onClick: () => importWizard('scores', rerender) }));
+  actions.append(button('Impor nilai dari Excel', { kind: 'primary', onClick: () => importWizard('scores', rerender, app) }));
 
   const classes = app.classes();
   if (!classes.length) {

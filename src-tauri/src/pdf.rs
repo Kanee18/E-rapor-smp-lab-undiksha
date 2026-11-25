@@ -1,8 +1,9 @@
-//! PDF per siswa lewat Microsoft Edge mode headless.
+//! PDF per siswa lewat browser berbasis Chromium mode headless.
 //!
-//! Edge selalu terpasang di Windows 10/11 dan memakai mesin yang sama dengan
-//! tampilan aplikasi (WebView2), jadi hasil PDF sama dengan pratinjau/cetak.
-//! Beberapa proses Edge dijalankan bersamaan supaya satu kelas cepat selesai.
+//! Windows: Microsoft Edge (selalu terpasang di Windows 10/11, mesin yang sama dengan
+//! tampilan aplikasi/WebView2, jadi hasil PDF sama dengan pratinjau/cetak).
+//! macOS: Google Chrome / Microsoft Edge / Chromium / Brave kalau terpasang.
+//! Beberapa proses dijalankan bersamaan supaya satu kelas cepat selesai.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -13,17 +14,60 @@ use std::time::{Duration, Instant};
 /// Satu rapor biasanya selesai ±1 detik; batas ini hanya untuk proses Edge yang macet.
 const TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Lokasi msedge.exe, atau `None` kalau tidak ditemukan.
+/// Lokasi browser untuk membuat PDF (Edge di Windows; Chrome/Edge/Chromium/Brave di macOS),
+/// atau `None` kalau tidak ditemukan.
 pub fn find_edge() -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
-    for var in ["ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA"] {
-        if let Ok(base) = std::env::var(var) {
-            candidates.push(PathBuf::from(base).join(r"Microsoft\Edge\Application\msedge.exe"));
+    if cfg!(windows) {
+        for var in ["ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA"] {
+            if let Ok(base) = std::env::var(var) {
+                candidates.push(PathBuf::from(base).join(r"Microsoft\Edge\Application\msedge.exe"));
+            }
+        }
+        candidates.push(PathBuf::from(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"));
+        candidates.push(PathBuf::from(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"));
+    } else {
+        let apps = [
+            "Google Chrome.app/Contents/MacOS/Google Chrome",
+            "Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+            "Chromium.app/Contents/MacOS/Chromium",
+            "Brave Browser.app/Contents/MacOS/Brave Browser",
+        ];
+        let mut bases = vec![PathBuf::from("/Applications")];
+        if let Ok(home) = std::env::var("HOME") {
+            bases.push(PathBuf::from(home).join("Applications"));
+        }
+        for base in &bases {
+            candidates.extend(apps.iter().map(|a| base.join(a)));
+        }
+        for bin in ["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/microsoft-edge"] {
+            candidates.push(PathBuf::from(bin));
         }
     }
-    candidates.push(PathBuf::from(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"));
-    candidates.push(PathBuf::from(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"));
     candidates.into_iter().find(|p| p.is_file())
+}
+
+/// Nama browser untuk pesan ke pengguna.
+pub fn browser_name(p: &Path) -> &'static str {
+    let s = p.to_string_lossy().to_lowercase();
+    if s.contains("edge") {
+        "Microsoft Edge"
+    } else if s.contains("brave") {
+        "Brave"
+    } else if s.contains("chromium") {
+        "Chromium"
+    } else {
+        "Google Chrome"
+    }
+}
+
+/// Pesan kalau tidak ada browser untuk membuat PDF.
+pub fn no_browser_message() -> String {
+    if cfg!(target_os = "macos") {
+        "Untuk membuat PDF di Mac, pasang Google Chrome (gratis, google.com/chrome) lalu coba lagi.".into()
+    } else {
+        "Microsoft Edge tidak ditemukan di laptop ini. Pakai tombol \"Cetak / Simpan PDF\" sebagai gantinya.".into()
+    }
 }
 
 /// Nama file aman untuk Windows (tanpa \/:*?"<>|), maks. 100 karakter.
@@ -80,7 +124,13 @@ fn print_one(edge: &Path, html_path: &Path, out: &Path, profile: &Path) -> Resul
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: tanpa jendela konsol
     }
-    let mut child = cmd.spawn().map_err(|e| format!("Edge tidak bisa dijalankan: {e}"))?;
+    #[cfg(unix)]
+    {
+        // grup proses sendiri supaya proses anak browser bisa dihentikan bersama
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    let mut child = cmd.spawn().map_err(|e| format!("{} tidak bisa dijalankan: {e}", browser_name(edge)))?;
     let start = Instant::now();
     loop {
         match child.try_wait() {
@@ -109,6 +159,10 @@ fn kill_tree(child: &mut std::process::Child) {
             .args(["/T", "/F", "/PID", &child.id().to_string()])
             .creation_flags(0x0800_0000)
             .status();
+    }
+    #[cfg(unix)]
+    {
+        let _ = Command::new("kill").args(["-9", &format!("-{}", child.id())]).status();
     }
     let _ = child.kill();
     let _ = child.wait();

@@ -1,6 +1,7 @@
 // Wizard impor Excel: pilih file → pilih sheet & kelas → hasil.
 import { api } from './api.js';
 import { h, openModal, errorText, levelWarning, toast } from './dom.js';
+import { importScoreWizard } from './score-import.js';
 
 const KIND = {
   students: { title: 'Impor data siswa', what: 'data siswa (ekspor Dapodik)' },
@@ -36,6 +37,11 @@ export async function importWizard(kind, onDone, app = null) {
   // Data siswa bukan ekspor Dapodik (daftar nilai guru SD, daftar kelas SMA, dll.): susunan kolom ditebak.
   if (kind === 'students' && !sheets.length) {
     flexibleStudents(modal, path, scans, onDone, null, app);
+    return;
+  }
+  // Nilai: bukan format rekap sekolah, atau rekap tanpa judul kelas → kolom & kelas ditebak/diatur sendiri.
+  if (kind === 'scores' && app && (!sheets.length || sheets.every((s) => !s.classes.some((c) => c.name)))) {
+    importScoreWizard(app, { path, scans, modal, sheet: sheets[0]?.name, onDone });
     return;
   }
   if (!sheets.length) {
@@ -125,7 +131,10 @@ export async function importWizard(kind, onDone, app = null) {
     kind === 'students'
       ? h('p', { class: 'small muted' }, 'Susunan kolom berbeda? ',
         h('button', { type: 'button', class: 'link', onclick: () => flexibleStudents(modal, path, scans, onDone, sheet.name, app) }, 'Atur kolom sendiri'))
-      : '',
+      : kind === 'scores' && app
+        ? h('p', { class: 'small muted' }, 'Mapel atau kolomnya terbaca keliru? ',
+          h('button', { type: 'button', class: 'link', onclick: () => importScoreWizard(app, { path, scans, modal, sheet: sheet.name, onDone }) }, 'Atur kolom sendiri'))
+        : '',
   ));
   modal.setActions([
     { label: 'Batal', kind: 'quiet', onClick: (c) => c() },

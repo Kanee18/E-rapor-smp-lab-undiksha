@@ -87,14 +87,13 @@
     <div class="logo-slot">{% for img in right_logos %}<img class="logo" decoding="async" src="{{ img }}" alt="">{% endfor %}</div>
   </div>
 
+  {# Baris identitas, label, dan urutannya diatur di Pengaturan → Identitas rapor. #}
+  {% if st.info %}
   <div class="info">
-    <div><b>Student Name:</b> {{ st.name }}</div>
-    <div><b>Grade / Class:</b> {{ st.grade_class }}</div>
-    <div><b>Student ID:</b> {{ st.student_id or "—" }}</div>
-    <div><b>Homeroom Teacher:</b> {{ st.homeroom or "—" }}</div>
-    <div><b>Academic Year:</b> {{ academic_year }}</div>
-    <div><b>Attendance:</b> {{ st.attendance or "—" }}</div>
+    {% for f in st.info %}<div><b>{{ f.label }}:</b> {{ f.value }}</div>
+    {% endfor %}
   </div>
+  {% endif %}
 
   <h2>1. Approaches to Learning (ATL) &amp; Learner Profile</h2>
   <table class="grid">
