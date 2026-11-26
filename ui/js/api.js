@@ -17,6 +17,7 @@ export const api = {
   saveClassRoster: (originalClass, className, rows, remove) =>
     invoke('save_class_roster', { original_class: originalClass, class_name: className, rows, remove }),
   saveStudentList: (classes) => invoke('save_student_list', { classes }),
+  saveTemplate: (request) => invoke('save_template', { request }),
   setScore: (id, key, ph, pts, manual) => invoke('set_score', { id, key, ph, pts, manual }),
   saveReportFields: (id, fields) => invoke('save_report_fields', { id, fields }),
   setEffectiveDays: (days) => invoke('set_effective_days', { days }),

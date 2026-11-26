@@ -3,6 +3,7 @@
 // Bisa diisi langsung, ditempel dari Excel (Ctrl+V), atau diimpor dari file Excel guru.
 import { h, autoGrow, button, expandGradeCode, link, localGrade, searchBox, shortcut, stamp, toast } from '../dom.js';
 import { importProjectWizard } from '../project-import.js';
+import { templateModal } from '../template-modal.js';
 
 /**
  * @param {object} env
@@ -47,6 +48,7 @@ export function renderProjectMode(env) {
   const subbar = h('div', { class: 'table-subbar' },
     row(h('span', { style: { fontWeight: 600 } }, 'Proyek'), projectSelect, statLine),
     row(saveState,
+      button('Template Excel', { kind: 'sm quiet', onClick: () => templateModal(app, { kind: 'projects', projectId: pid, classes: [cls] }) }),
       button('Impor nilai proyek dari Excel…', { kind: 'sm primary', onClick: async () => {
         await flush();
         importProjectWizard(app, { projectId: pid, cls, onDone: async (usedPid) => { app.isiProject = usedPid; await app.reload(); rerender(); } });

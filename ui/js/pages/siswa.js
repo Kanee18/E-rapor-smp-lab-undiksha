@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { h, avatar, button, menuButton, levelOfClass, swapIn, classTabs, confirmBox, emptyState, errorText, link, openModal, searchBox, toast, toolbar } from '../dom.js';
 import { importWizard } from '../import-wizard.js';
 import { rosterSheet } from '../roster-sheet.js';
+import { templateModal } from '../template-modal.js';
 
 export async function render(ctx) {
   const { app, content, actions, setTitle } = ctx;
@@ -21,6 +22,7 @@ export async function render(ctx) {
       { label: 'Pindahkan ke jenjang lain…', hint: 'Mis. kelas SD yang masuk data SMP', onClick: () => moveClassesDialog(app, rerender) },
       { label: 'Hapus kelas…', kind: 'danger', hint: 'Siswa, nilai, dan isian rapornya', onClick: () => deleteClassesDialog(app, rerender) },
     ])] : []),
+    button('Template Excel', { kind: 'quiet', onClick: () => templateModal(app, { kind: 'students' }) }),
     button('Buat kelas baru', { iconName: 'plus', onClick: () => openRoster(null) }),
     button('Impor dari Excel', { kind: 'primary', onClick: () => importWizard('students', rerender, app) }),
   );
@@ -28,9 +30,12 @@ export async function render(ctx) {
   if (!app.data.students.length) {
     content.appendChild(emptyState('Belum ada siswa',
       'Ketik daftar siswa langsung di aplikasi (bisa juga salin-tempel dari Excel), atau impor file ekspor Dapodik / daftar siswa Excel (.xls/.xlsx). Kolom Nama, NIS/NISN, L/P, dan kelas ditebak otomatis.',
-      h('div', { class: 'row', style: { display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' } },
-        button('Buat daftar siswa', { kind: 'primary', iconName: 'pen', onClick: () => openRoster(null) }),
-        button('Impor dari Excel', { onClick: () => importWizard('students', rerender, app) }))));
+      h('div', {},
+        h('div', { class: 'row', style: { display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' } },
+          button('Buat daftar siswa', { kind: 'primary', iconName: 'pen', onClick: () => openRoster(null) }),
+          button('Impor dari Excel', { onClick: () => importWizard('students', rerender, app) })),
+        h('p', { class: 'small muted', style: { marginTop: '14px' } }, 'Belum punya file Excel? ',
+          link('Lihat dan simpan template Excel data siswa', () => templateModal(app, { kind: 'students' }))))));
     return;
   }
 

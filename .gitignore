@@ -5,3 +5,6 @@ src-tauri/gen/
 
 # Data siswa asli (NISN/NIS, data pribadi) - jangan masuk repo
 Data_siswa/
+
+# Video tutorial (besar, dibagikan terpisah)
+panduan/*.mp4

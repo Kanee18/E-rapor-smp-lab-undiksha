@@ -314,6 +314,46 @@ pub async fn save_student_list(
 }
 
 #[derive(Serialize)]
+pub struct TemplateSaved {
+    path: String,
+    #[serde(flatten)]
+    info: crate::templates::TemplateInfo,
+}
+
+/// Simpan template Excel yang disarankan (data siswa, nilai mapel, nilai proyek, absensi).
+#[tauri::command(rename_all = "snake_case")]
+pub async fn save_template(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request: crate::templates::TemplateRequest,
+) -> Result<Option<TemplateSaved>, String> {
+    let (data, dir) = {
+        let store = lock(&state)?;
+        (store.data.clone(), store.dir.join("template"))
+    };
+    // periksa dulu supaya kesalahan (mis. belum ada mapel) muncul sebelum dialog simpan
+    let check = std::env::temp_dir().join("eraport-template-cek.xlsx");
+    crate::templates::write_template(&data, &request, &check)?;
+    let _ = std::fs::remove_file(&check);
+    let _ = std::fs::create_dir_all(&dir);
+    let picked = app
+        .dialog()
+        .file()
+        .set_title("Simpan template Excel")
+        .set_directory(&dir)
+        .set_file_name(crate::templates::suggested_file_name(&data, &request))
+        .add_filter("File Excel", &["xlsx"])
+        .blocking_save_file();
+    let Some(fp) = picked else { return Ok(None) };
+    let mut path = fp.into_path().map_err(|e| e.to_string())?;
+    if path.extension().is_none() {
+        path.set_extension("xlsx");
+    }
+    let info = crate::templates::write_template(&data, &request, &path)?;
+    Ok(Some(TemplateSaved { path: path.display().to_string(), info }))
+}
+
+#[derive(Serialize)]
 pub struct DeleteClassesResult {
     students_deleted: usize,
     classes_deleted: usize,

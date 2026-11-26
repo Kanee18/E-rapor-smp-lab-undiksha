@@ -844,3 +844,19 @@ table.info-edit tr.off td:not(.center):not(.tight) { opacity: .45; }
 .qr-box svg { display: block; width: 100%; height: 100%; }
 .steps-list { margin: 0; padding-left: 20px; display: grid; gap: 6px; flex: 1 1 260px; }
 .otp-input { font-size: 22px; letter-spacing: .25em; text-align: center; }
+
+/* ---------------------------------------------------------------- template Excel (contoh susunan) */
+table.tpl-sheet { border-collapse: collapse; font-size: 13px; width: 100%; min-width: 560px; }
+table.tpl-sheet th, table.tpl-sheet td { border: 1px solid #D9D4CA; padding: 6px 9px; text-align: left; white-space: nowrap; }
+table.tpl-sheet th { background: var(--accent, #3653D3); color: #fff; font-weight: 600; text-align: center; border-color: #2C44B8; }
+table.tpl-sheet td.tpl-fixed { background: #F1F0EC; }
+table.tpl-sheet td.tpl-ex { color: var(--accent, #3653D3); font-style: italic; }
+table.tpl-sheet td.tpl-class { background: #E6EBFC; color: var(--accent, #3653D3); font-weight: 700; }
+table.tpl-sheet td.tpl-more { color: var(--text-3); text-align: center; }
+table.tpl-sheet .c { text-align: center; }
+table.tpl-sheet .r { text-align: right; }
+.tpl-title { font-weight: 700; color: var(--accent, #3653D3); font-size: 13px; margin: 0 0 6px; }
+.tpl-classes { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+table.tpl-sheet td.tpl-plain { border: 0; background: transparent; }
+table.tpl-sheet td.tpl-field { background: #FFF4CC; font-weight: 600; }
+table.tpl-sheet tr.tpl-field-row td { padding-bottom: 8px; }

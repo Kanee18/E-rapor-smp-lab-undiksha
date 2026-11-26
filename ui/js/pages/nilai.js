@@ -3,13 +3,16 @@
 import { api } from '../api.js';
 import { h, button, swapIn, classTabs, emptyState, errorText, fmtNum, parseNum, rankMap, stamp, toast, toolbar } from '../dom.js';
 import { importWizard } from '../import-wizard.js';
+import { templateModal } from '../template-modal.js';
 
 export async function render(ctx) {
   const { app, content, actions, setTitle } = ctx;
   const g = app.data.settings.grading;
   setTitle('Nilai mapel', `Nilai akhir = ${g.weight_ph}% PH + ${g.weight_pts}% PTS${g.round_final ? ', dibulatkan' : ''}, lalu menjadi predikat. Kolom Akhir boleh diisi manual untuk menggantikan rumus.`);
   const rerender = async () => { await app.reload(); content.replaceChildren(); actions.replaceChildren(); await render(ctx); };
-  actions.append(button('Impor nilai dari Excel', { kind: 'primary', onClick: () => importWizard('scores', rerender, app) }));
+  actions.append(
+    button('Template Excel', { kind: 'quiet', onClick: () => templateModal(app, { kind: 'scores' }) }),
+    button('Impor nilai dari Excel', { kind: 'primary', onClick: () => importWizard('scores', rerender, app) }));
 
   const classes = app.classes();
   if (!classes.length) {

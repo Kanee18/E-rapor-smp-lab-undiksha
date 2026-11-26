@@ -7,6 +7,27 @@ Dibuat dengan **Tauri 2** (Rust + tampilan HTML/JS biasa, tanpa framework).
 Satu laptop operator memegang data. Guru dan fasilitator cukup menyerahkan nilai
 dalam format Excel yang sudah biasa dipakai, atau mengisinya langsung di aplikasi.
 
+## Panduan untuk guru
+
+- `panduan/Panduan-Lengkap-E-Raport.pdf`: panduan lengkap (39 halaman, bergambar) untuk semua fitur.
+  Sumbernya `Panduan-Lengkap-E-Raport.html`, dengan gambar di `panduan/gambar/` (data siswa fiktif).
+- `panduan/Panduan-Guru-E-Raport.pdf`: ringkasan 2 halaman untuk dicetak dan ditempel.
+- Video tutorial `Tutorial-E-Raport.mp4` (±26 menit, bernarasi) **tidak disimpan di repo** karena ukurannya besar.
+  Bagikan lewat flashdisk, Google Drive, atau YouTube (unlisted).
+
+## Template Excel baku untuk guru
+
+Folder `template-excel/` berisi empat template kosong yang **sama untuk SD, SMP, dan SMA**:
+`Template 1 - Data Siswa`, `Template 2 - Nilai Mapel` (satu file per mapel, nama mapel di kotak kuning),
+`Template 3 - Nilai Proyek` (satu file per proyek), dan `Template 4 - Absensi`. Lima kolom pertama selalu
+No · Nama Siswa · NIS · NISN · Kelas. File yang diisi guru langsung terbaca impor aplikasi
+(nama mapel bahasa Indonesia seperti "Matematika" dikenali). Setiap file punya sheet *Petunjuk*.
+
+Template yang sama juga bisa disimpan dari aplikasi (tombol **Template Excel** di Data siswa, Nilai mapel,
+dan tab Nilai proyek), opsional dengan daftar siswa sudah tercantum. Kode: `src-tauri/src/templates.rs`,
+`ui/js/template-modal.js`. Membuat ulang file di `template-excel/` setelah mengubah susunannya:
+`ERAPORT_TEMPLATE_DIR=../template-excel cargo test --lib generate_standard_templates -- --ignored`.
+
 ## Alur kerja
 
 1. **Data Siswa**: impor dari ekspor Dapodik (`.xls`/`.xlsx`), **atau ketik langsung di aplikasi**

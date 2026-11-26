@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Panduan Lengkap E-Raport</title>
+<style>
+  @font-face { font-family: "Jakarta"; font-weight: 200 800; src: url(../ui/fonts/plus-jakarta-sans-latin-wght-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Jakarta"; font-weight: 200 800; src: url(../ui/fonts/plus-jakarta-sans-latin-ext-wght-normal.woff2) format("woff2"); unicode-range: U+0100-024F, U+1E00-1EFF; }
+  @page { size: A4; margin: 15mm 16mm 16mm; @bottom-left { content: "Panduan Lengkap E-Raport"; font: 8pt "Jakarta", Arial, sans-serif; color: #7A808C; } @bottom-right { content: "Halaman " counter(page); font: 8pt "Jakarta", Arial, sans-serif; color: #7A808C; } }
+  @page cover { margin: 0; @bottom-left { content: none; } @bottom-right { content: none; } }
+  :root { --ink: #191C23; --ink2: #4A505C; --ink3: #7A808C; --line: #E3E3DD; --soft: #F6F6F3; --blue: #3653D3; --blue-soft: #EEF1FD; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font: 10.4pt/1.55 "Jakarta", "Segoe UI", Arial, sans-serif; color: var(--ink); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  .cover { page: cover; height: 297mm; padding: 30mm 22mm; color: #fff; break-after: page; position: relative;
+    background: linear-gradient(135deg, #3653D3, #5B4FD9); display: flex; flex-direction: column; }
+  .cover .brand { display: flex; align-items: center; gap: 4mm; }
+  .cover .brand img { height: 18mm; background: #fff; border-radius: 3mm; padding: 1.5mm; }
+  .cover .brand b { font-size: 15pt; display: block; }
+  .cover h1 { font-size: 40pt; line-height: 1.08; letter-spacing: -0.02em; margin: 60mm 0 6mm; }
+  .cover p { font-size: 14pt; margin: 0; opacity: .92; max-width: 140mm; }
+  .cover .tags { display: flex; gap: 3mm; margin-top: 10mm; flex-wrap: wrap; }
+  .cover .tags span { border: 1px solid rgba(255,255,255,.5); border-radius: 99px; padding: 1.5mm 5mm; font-weight: 700; font-size: 10pt; }
+  .cover .foot { margin-top: auto; font-size: 10pt; opacity: .85; }
+
+  h1.ch { font-size: 21pt; letter-spacing: -0.02em; margin: 0 0 2mm; display: flex; align-items: center; gap: 4mm; break-after: avoid; }
+  h1.ch .n { display: inline-grid; place-items: center; min-width: 11mm; height: 11mm; padding: 0 2mm; border-radius: 3mm; background: var(--blue); color: #fff; font-size: 14pt; }
+  .chapter { break-before: page; }
+  .lead { color: var(--ink2); margin: 0 0 5mm; font-size: 11pt; }
+  .who { display: inline-block; font-size: 8.5pt; font-weight: 700; color: var(--blue); background: var(--blue-soft); padding: .8mm 3mm; border-radius: 99px; margin-bottom: 3mm; }
+  h2 { font-size: 13pt; margin: 7mm 0 2mm; break-after: avoid; }
+  h3 { font-size: 11pt; margin: 5mm 0 1.5mm; break-after: avoid; }
+  p { margin: 0 0 2.5mm; }
+  ol, ul { margin: 0 0 3mm; padding-left: 6mm; }
+  li { margin: 1.2mm 0; }
+  li::marker { color: var(--ink3); font-weight: 700; }
+  b { font-weight: 700; }
+  .ui { font-weight: 700; color: var(--blue); }
+  kbd { font: 700 8.6pt "Jakarta", Arial, sans-serif; padding: .2mm 1.6mm; border: 1px solid #C9C9C2; border-bottom-width: 2px; border-radius: 1.2mm; background: #fff; white-space: nowrap; }
+  figure { margin: 3mm 0 5mm; break-inside: avoid; }
+  figure img { display: block; max-width: 100%; max-height: 105mm; margin: 0 auto; border: 1px solid var(--line); border-radius: 2.5mm; }
+  figure.small img { max-height: 62mm; }
+  figure.tall img { max-height: 150mm; }
+  figcaption { font-size: 8.8pt; color: var(--ink3); text-align: center; margin-top: 1.6mm; }
+  .num { display: inline-grid; place-items: center; width: 4.6mm; height: 4.6mm; border-radius: 50%; background: var(--blue); color: #fff; font-size: 7.6pt; font-weight: 700; vertical-align: .2mm; }
+  .note { border-left: 3px solid var(--blue); padding: 2.4mm 4mm; background: var(--soft); border-radius: 0 2mm 2mm 0; margin: 3mm 0 4mm; break-inside: avoid; }
+  .note.warn { border-left-color: #C98507; background: #FDF8EC; }
+  .note.ok { border-left-color: #1F8A57; background: #EEF8F2; }
+  .note b:first-child { display: block; margin-bottom: .6mm; }
+  table.t { width: 100%; border-collapse: collapse; margin: 2mm 0 4mm; font-size: 9.6pt; break-inside: avoid; }
+  table.t th, table.t td { border: 1px solid var(--line); padding: 1.6mm 2.4mm; text-align: left; vertical-align: top; }
+  table.t th { background: var(--soft); }
+  .code { border-radius: 99px; padding: .3mm 2.4mm; font-weight: 700; font-size: 8.8pt; white-space: nowrap; }
+  .ee { background: #E3F4EA; color: #146B43; } .me { background: #E6EBFC; color: #2A43B4; } .ae { background: #FBF1DC; color: #8A5E06; } .be { background: #FBE7E4; color: #A8342A; }
+  .toc { columns: 2; column-gap: 10mm; padding: 0; list-style: none; }
+  .toc li { break-inside: avoid; display: flex; gap: 3mm; padding: 1.4mm 0; border-bottom: 1px dashed var(--line); margin: 0; }
+  .toc li span { color: var(--blue); font-weight: 700; min-width: 7mm; }
+  .steps4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin: 3mm 0 5mm; }
+  .steps4 div { border: 1px solid var(--line); border-radius: 3mm; padding: 3mm; }
+  .steps4 b { display: block; color: var(--blue); font-size: 15pt; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; align-items: start; }
+</style>
+</head>
+<body>
+
+<!-- ================================================================== SAMPUL -->
+<section class="cover">
+  <div class="brand"><img src="../ui/Logo/logo-lab.png" alt=""><div><b>E-Raport</b>National Plus Class</div></div>
+  <h1>Panduan Lengkap<br>E-Raport</h1>
+  <p>Cara memakai semua fitur, langkah demi langkah, untuk guru, wali kelas, fasilitator proyek, dan operator.</p>
+  <div class="tags"><span>SD</span><span>SMP</span><span>SMA</span><span>Windows &amp; MacBook</span></div>
+  <div class="foot">Sekolah Laboratorium Undiksha Singaraja · Semua contoh di panduan ini memakai data siswa fiktif.</div>
+</section>
+
+<!-- ================================================================== DAFTAR ISI -->
+<section>
+  <h1 class="ch">Daftar isi</h1>
+  <ol class="toc">
+    <li><span>1</span>Mengenal E-Raport</li>
+    <li><span>2</span>Data siswa</li>
+    <li><span>3</span>Nilai mapel</li>
+    <li><span>4</span>Pengaturan</li>
+    <li><span>5</span>Isi rapor per siswa</li>
+    <li><span>6</span>Nilai proyek (fasilitator)</li>
+    <li><span>7</span>Template Excel, absensi &amp; form</li>
+    <li><span>8</span>Cetak, PDF, dan leger</li>
+    <li><span>9</span>Data &amp; arsip (backup)</li>
+    <li><span>10</span>Kata sandi &amp; Google Authenticator</li>
+    <li><span>11</span>Memakai di MacBook</li>
+    <li><span>12</span>Tanya jawab &amp; masalah umum</li>
+  </ol>
+
+  <h2>Siapa membaca bagian mana?</h2>
+  <table class="t">
+    <tr><th style="width:32%">Peran</th><th>Bagian yang perlu dibaca</th></tr>
+    <tr><td><b>Wali kelas</b></td><td>1, 5, 8 (pratinjau), 12</td></tr>
+    <tr><td><b>Fasilitator proyek</b></td><td>1, 6, 7 (template &amp; form Excel), 12</td></tr>
+    <tr><td><b>Operator / admin</b></td><td>Semua bagian, terutama 2, 3, 4, 7, 8, 9, dan 10</td></tr>
+    <tr><td><b>Guru yang mengisi di Excel</b></td><td>7 (Template Excel)</td></tr>
+  </table>
+
+  <div class="note"><b>Video tutorial</b>Semua bagian di panduan ini juga dijelaskan dalam video <b>Tutorial-E-Raport.mp4</b>, dengan suara penjelasan. Video dan panduan memakai urutan yang sama, jadi keduanya bisa dipakai bergantian.</div>
+
+  <h2>Aturan predikat (bawaan)</h2>
+  <p><span class="code ee">EE</span> Exceeding Expectations 96–100 &nbsp; <span class="code me">ME</span> Meeting Expectations 91–95 &nbsp; <span class="code ae">AE</span> Approaching Expectations 86–90 &nbsp; <span class="code be">BE</span> Below Expectations 80–85</p>
+  <p class="muted">Batas nilai bisa diubah di <span class="ui">Pengaturan → Rumus &amp; predikat</span>. Nilai akhir di bawah 80 sementara dicetak BE dan muncul di daftar <b>Perlu dicek</b>.</p>
+</section>
+
+<!-- ================================================================== 1 -->
+<section class="chapter">
+  <h1 class="ch"><span class="n">1</span>Mengenal E-Raport</h1>
+  <p class="lead">E-Raport mengubah nilai dari guru menjadi rapor <b>Student Progress Report</b> yang siap dicetak. Semua data tersimpan di laptop, jadi tidak perlu internet.</p>
+
+  <div class="steps4">
+    <div><b>1</b>Data siswa<br><span class="muted">Impor atau ketik daftar siswa</span></div>
+    <div><b>2</b>Nilai mapel<br><span class="muted">Impor rekap nilai PH/PTS</span></div>
+    <div><b>3</b>Isi rapor<br><span class="muted">ATL, proyek, narasi, kehadiran</span></div>
+    <div><b>4</b>Cetak<br><span class="muted">Printer, PDF, atau leger</span></div>
+  </div>
+
+  <h2>Tampilan utama</h2>
+  <figure><img src="gambar/ringkasan.jpg" alt=""><figcaption>Halaman Ringkasan. <span class="num">1</span> menu langkah kerja · <span class="num">2</span> pilihan jenjang · <span class="num">3</span> kemajuan rapor</figcaption></figure>
+  <ol>
+    <li><b>Menu di kiri.</b> Empat menu bernomor adalah langkah kerja: <span class="ui">Data siswa</span>, <span class="ui">Nilai mapel</span>, <span class="ui">Isi rapor</span>, dan <span class="ui">Cetak</span>. Di bawahnya ada <span class="ui">Pengaturan</span> dan <span class="ui">Data &amp; arsip</span>.</li>
+    <li><b>Jenjang SD · SMP · SMA</b> di kiri atas. Data setiap jenjang disimpan terpisah, jadi pastikan jenjangnya benar sebelum mengisi.</li>
+    <li><b>Kotak biru</b> menunjukkan berapa rapor yang siap dicetak, dan tombol untuk langkah berikutnya. Empat kotak di bawahnya menunjukkan kemajuan setiap langkah.</li>
+    <li><b>Kiri bawah</b>: tahun ajaran, jumlah siswa, status backup, dan tombol <span class="ui">Kunci aplikasi</span> (kalau kata sandi dipasang).</li>
+  </ol>
+  <figure><img src="gambar/ringkasan-bawah.jpg" alt=""><figcaption>Kemajuan per kelas dan daftar Perlu dicek. <span class="num">1</span> buka kelas · <span class="num">2</span> hal yang perlu diperiksa</figcaption></figure>
+  <p>Di bawah Ringkasan ada <b>Per kelas</b> (nilai, ATL, proyek, kehadiran, siap cetak) dan <b>Perlu dicek</b>, yaitu hal yang sebaiknya diperiksa sebelum mencetak. Klik <span class="ui">Buka</span> untuk langsung ke tempatnya.</p>
+  <div class="note ok"><b>Tersimpan otomatis</b>Semua isian di Data siswa, Nilai mapel, dan Isi rapor langsung tersimpan. Satu-satunya halaman yang memakai tombol <b>Simpan</b> adalah <span class="ui">Pengaturan</span>.</div>
+</section>
+
+<!-- ================================================================== 2 -->
+<section class="chapter">
+  <h1 class="ch"><span class="n">2</span>Data siswa</h1>
+  <span class="who">Operator</span>
+  <p class="lead">Masukkan daftar siswa satu kali di awal semester. Yang disimpan hanya nama, NIS, NISN, jenis kelamin, kelas, dan nomor absen. Data pribadi lain seperti NIK, alamat, dan data orang tua tidak disimpan.</p>
+
+  <h2>Cara 1 · Impor dari Excel</h2>
+  <figure class="small"><img src="gambar/siswa-kosong.jpg" alt=""><figcaption><span class="num">1</span> ketik sendiri · <span class="num">2</span> impor dari Excel</figcaption></figure>
+  <ol>
+    <li>Buka <span class="ui">Data siswa</span>, lalu klik <span class="ui">Impor dari Excel</span> dan pilih file ekspor Dapodik atau daftar siswa dari wali kelas (.xls/.xlsx). Belum punya file? Pakai <span class="ui">Template Excel</span> (lihat bagian 7).</li>
+    <li>Aplikasi menebak sendiri kolom <b>Nama, NIS, NISN, L/P, dan Kelas</b>. Kalau file memakai satu sheet per kelas, kelas ditebak dari nama sheet. Kalau ada pilihan <b>Sheet</b>, pilih sheet kelas yang akan diimpor.</li>
+    <li>Periksa <b>Pratinjau</b>. Kalau ada kolom yang keliru, ganti pilihannya di atas. Pratinjau langsung berubah.</li>
+    <li>Klik <span class="ui">Impor</span>. Aplikasi melaporkan berapa siswa yang baru dan yang diperbarui.</li>
+  </ol>
+  <figure><img src="gambar/impor-siswa.jpg" alt=""><figcaption><span class="num">1</span> kolom yang ditebak · <span class="num">2</span> pratinjau · <span class="num">3</span> tombol Impor</figcaption></figure>
+  <div class="note"><b>Impor ulang aman</b>Siswa yang sudah ada dicocokkan lewat NISN, atau lewat NIS/nama di kelas yang sama, lalu diperbarui. Nilai dan isian rapornya tidak berubah.</div>
+
+  <h2>Cara 2 · Lembar kelas (seperti Excel)</h2>
+  <figure class="small"><img src="gambar/siswa-daftar.jpg" alt=""><figcaption><span class="num">1</span> pilih kelas · <span class="num">2</span> Buka lembar</figcaption></figure>
+  <ol>
+    <li>Klik <span class="ui">Buat kelas baru</span> untuk kelas baru, atau pilih tab kelas lalu klik <span class="ui">Buka lembar</span>.</li>
+    <li>Ketik seperti di Excel: <b>nama lengkap, NIS, NISN, L/P</b>, serta jumlah hari <b>S</b> (sakit), <b>I</b> (izin), <b>A</b> (alpa). Tekan <kbd>Enter</kbd> untuk pindah ke baris berikutnya.</li>
+    <li>Bisa salin-tempel: blok beberapa baris dan kolom di Excel, <kbd>Ctrl</kbd>+<kbd>C</kbd>, klik sel pertama di lembar, lalu <kbd>Ctrl</kbd>+<kbd>V</kbd>.</li>
+    <li>Di kolom S/I/A, tekan <kbd>+</kbd> atau <kbd>−</kbd> untuk menambah atau mengurangi satu hari.</li>
+    <li>Urutan baris adalah <b>nomor absen</b>. Tombol panah di ujung baris mengubah urutan, dan ikon tempat sampah menghapus baris.</li>
+    <li>Tulisan <b>Tersimpan otomatis</b> muncul di kanan atas. Klik <span class="ui">Tutup lembar</span> kalau sudah selesai.</li>
+  </ol>
+  <figure><img src="gambar/lembar-kelas.jpg" alt=""><figcaption>Lembar kelas. <span class="num">1</span> kolom isian · <span class="num">2</span> Tutup lembar</figcaption></figure>
+
+  <h2>Mengubah dan mengelola kelas</h2>
+  <div class="two">
+    <figure class="small"><img src="gambar/ubah-siswa.jpg" alt=""><figcaption>Ubah data satu siswa</figcaption></figure>
+    <figure class="small"><img src="gambar/kelola-kelas.jpg" alt=""><figcaption>Menu Kelola kelas</figcaption></figure>
+  </div>
+  <ul>
+    <li><span class="ui">Ubah</span> di baris siswa: perbaiki nama, NIS, NISN, jenis kelamin, atau kelas, lalu klik <span class="ui">Simpan</span>. <span class="ui">Hapus</span> menghapus siswa itu.</li>
+    <li><span class="ui">Tambah siswa</span> menambah satu siswa ke kelas yang sedang dipilih.</li>
+    <li><span class="ui">Kelola kelas → Ekspor ke Excel</span> menyimpan daftar siswa yang bisa diimpor lagi, misalnya di laptop lain.</li>
+    <li><span class="ui">Kelola kelas → Pindahkan ke jenjang lain</span> dipakai kalau kelas masuk ke jenjang yang salah, misalnya kelas SD masuk ke data SMP.</li>
+    <li><span class="ui">Kelola kelas → Hapus kelas</span> menghapus siswa beserta nilai dan isian rapornya. Aplikasi membuat backup lebih dulu.</li>
+  </ul>
+</section>
+
+<!-- ================================================================== 3 -->
+<section class="chapter">
+  <h1 class="ch"><span class="n">3</span>Nilai mapel</h1>
+  <span class="who">Operator</span>
+  <p class="lead">Nilai mapel diimpor dari Excel, jadi guru tidak perlu mengetik ulang. Nilai akhir dan predikat dihitung otomatis.</p>
+
+  <h2>Impor rekap nilai</h2>
+  <ol>
+    <li>Buka <span class="ui">Nilai mapel</span>, lalu klik <span class="ui">Impor nilai dari Excel</span> dan pilih file rekap. Supaya guru mapel mengisi dengan susunan yang pasti cocok, bagikan <span class="ui">Template Excel</span> nilai mapel (bagian 7).</li>
+    <li>Aplikasi menampilkan <b>mapel yang terbaca</b>. Semua mapel disimpan, jadi kalau nanti ada mapel baru di rapor, tidak perlu impor ulang.</li>
+    <li>Centang kelas yang akan diimpor, lalu klik <span class="ui">Impor</span>.</li>
+    <li>Hasilnya menunjukkan berapa siswa yang cocok. Nama yang hanya mirip, misalnya singkatan atau salah ejaan, ditandai supaya bisa dicek. Baris yang tidak cocok dengan siswa mana pun tidak dimasukkan.</li>
+  </ol>
+  <figure class="small"><img src="gambar/impor-nilai.jpg" alt=""><figcaption><span class="num">1</span> mapel yang terbaca · <span class="num">2</span> kelas yang diimpor</figcaption></figure>
+  <div class="note"><b>Sel kosong tidak menghapus</b>Sel yang kosong di Excel tidak menghapus nilai yang sudah ada di aplikasi.</div>
+
+  <h2>Tabel nilai</h2>
+  <figure><img src="gambar/nilai-tabel.jpg" alt=""><figcaption><span class="num">1</span> rumus yang berlaku · <span class="num">2</span> PH, PTS, Akhir, dan Predikat setiap mapel</figcaption></figure>
+  <ul>
+    <li>Rumus bawaan: <b>Nilai akhir = 50% PH + 50% PTS</b>, dibulatkan, lalu menjadi predikat <span class="code ee">EE</span> <span class="code me">ME</span> <span class="code ae">AE</span> <span class="code be">BE</span>.</li>
+    <li>Nilai bisa diperbaiki langsung di tabel. Kolom <b>Akhir</b> boleh diisi manual untuk menggantikan hasil rumus.</li>
+    <li>Bobot PH/PTS dan batas predikat diatur di <span class="ui">Pengaturan → Rumus &amp; predikat</span>.</li>
+  </ul>
+
+  <h2>File nilai dengan susunan berbeda</h2>
+  <p>Setiap guru membuat file nilai dengan caranya sendiri, misalnya ada kolom NH 1, NH 2, NH 3, rata-rata, PTS, atau satu sheet per mapel. Aplikasi tetap bisa membacanya:</p>
+  <ol>
+    <li>Klik <span class="ui">Impor nilai dari Excel</span> seperti biasa. Kalau susunannya bukan format rekap sekolah, jendela <b>atur kolom</b> muncul otomatis. Bisa juga dibuka lewat tautan <span class="ui">Atur kolom sendiri</span>.</li>
+    <li>Periksa kolom <b>Nama siswa</b> (wajib), serta NISN, NIS, dan Kelas kalau ada.</li>
+    <li>Di <b>Kolom nilai</b>, tentukan setiap kolom masuk sebagai PH, PTS, atau nilai akhir mapel tertentu, atau <i>bukan nilai</i>. Beberapa kolom PH untuk mapel yang sama otomatis dirata-rata.</li>
+    <li>Kalau file tidak punya kolom kelas, pilih kelasnya di bawah. Kelas juga ditebak dari judul tabel atau nama sheet.</li>
+    <li>Klik <span class="ui">Periksa</span>. Aplikasi menunjukkan berapa siswa yang cocok, nilai yang baru, dan nilai lama yang akan tertimpa. Kalau sudah benar, klik <span class="ui">Terapkan</span>.</li>
+  </ol>
+  <div class="two">
+    <figure class="tall"><img src="gambar/nilai-fleksibel.jpg" alt=""><figcaption><span class="num">1</span> kolom identitas · <span class="num">2</span> kolom nilai</figcaption></figure>
+    <figure class="tall"><img src="gambar/nilai-periksa.jpg" alt=""><figcaption><span class="num">1</span> ringkasan · <span class="num">2</span> Terapkan</figcaption></figure>
+  </div>
+</section>
+
+<!-- ================================================================== 4 -->
+<section class="chapter">
+  <h1 class="ch"><span class="n">4</span>Pengaturan</h1>
+  <span class="who">Operator</span>
+  <p class="lead">Pengaturan berlaku untuk semua rapor di jenjang yang sedang dipilih. Atur sekali di awal, lalu periksa lagi sebelum mencetak.</p>
+  <div class="note warn"><b>Jangan lupa klik Simpan</b>Setiap kali ada perubahan di Pengaturan, di bawah muncul tulisan <b>Ada perubahan yang belum disimpan</b>. Klik <span class="ui">Simpan</span>. Untuk membatalkan perubahan, klik <span class="ui">Batalkan</span>.</div>
+  <figure class="small"><img src="gambar/set-simpan.jpg" alt=""><figcaption>Bilah Simpan muncul setelah ada perubahan</figcaption></figure>
+
+  <h2>Identitas rapor (kop)</h2>
+  <figure><img src="gambar/set-identitas.jpg" alt=""><figcaption><span class="num">1</span> daftar isi Pengaturan: klik untuk melompat ke bagian</figcaption></figure>
+  <ul>
+    <li><b>Logo sekolah</b> dan <b>logo universitas/kampus</b>: pilih gambar dan posisinya (kiri, kanan, atau atas). Ada pratinjau kop dan tombol <span class="ui">Tukar posisi</span>.</li>
+    <li><b>Nama sekolah, judul rapor</b> (tekan <kbd>Enter</kbd> untuk baris baru), <b>sub-judul</b> (mis. TERM 1), <b>tahun ajaran</b>, <b>tempat &amp; tanggal</b>.</li>
+    <li><b>Nama dan jabatan kepala sekolah</b>, serta <b>jabatan wali kelas</b>. Kalau nama dikosongkan, rapor mencetak garis titik-titik.</li>
+    <li><b>Ukuran kertas</b>: A4, F4/Folio, atau Letter. Ada juga pilihan menampilkan angka di samping predikat mapel, misalnya "ME (92)".</li>
+  </ul>
+
+  <h2>Kotak identitas siswa</h2>
+  <figure><img src="gambar/set-identitas-siswa.jpg" alt=""><figcaption>Baris-baris di kotak abu-abu bagian atas rapor</figcaption></figure>
+  <ul>
+    <li>Isi kotak: nama siswa, kelas, NIS/NISN, wali kelas, tahun ajaran, dan kehadiran.</li>
+    <li><b>Tulisan label</b> bebas diganti, misalnya "Student ID" menjadi "NISN" atau "Nomor Induk".</li>
+    <li>Hapus centang <b>Tampil</b> untuk menyembunyikan baris. Tombol panah mengubah urutan.</li>
+    <li><b>Bentuk isian</b>: kelas ditulis "Grade 9 (IX-1)" atau "IX-1" saja; nomor siswa berupa NIS dan NISN, NIS saja, atau NISN saja.</li>
+    <li>Pratinjau di bawah tabel langsung menunjukkan hasilnya. <span class="ui">Kembalikan ke bawaan</span> mengembalikan susunan semula.</li>
+  </ul>
+
+  <h2>Rumus &amp; predikat</h2>
+  <figure class="small"><img src="gambar/set-penilaian.jpg" alt=""><figcaption>Bobot PH/PTS dan batas predikat</figcaption></figure>
+  <p>Atur <b>bobot PH dan PTS</b> (totalnya 100%), pembulatan nilai akhir, serta kode, keterangan, dan batas bawah/atas setiap predikat. Predikat ditentukan dari batas bawah. Rentangnya dicetak sebagai keterangan di rapor.</p>
+
+  <h2>Mapel</h2>
+  <figure class="small"><img src="gambar/set-mapel.jpg" alt=""><figcaption>Satu baris = satu mapel di bagian 3 rapor</figcaption></figure>
+  <ul>
+    <li><b>Nama di rapor</b>, misalnya "Science (IPA)".</li>
+    <li><b>Sumber nilai</b> adalah judul kolom di file rekap, misalnya IPA, B. INDO, atau MAT. Di bawah tabel tertulis kolom apa saja yang sudah diimpor.</li>
+    <li><b>Indikator</b>: teks penjelasan yang tercetak di rapor. Klik <span class="ui">+ Tambah mapel</span> untuk menambah. Jumlah mapel bebas.</li>
+  </ul>
+
+  <h2>ATL &amp; Learner Profile</h2>
+  <figure><img src="gambar/set-atl.jpg" alt=""><figcaption>Indikator per predikat untuk satu atribut</figcaption></figure>
+  <ul>
+    <li>Tujuh atribut bawaan: Inquirer, Caring, Communicator, Reflective, Thinking Skills, Social Skills, Self-Management. Klik nama atribut untuk membukanya.</li>
+    <li>Setiap predikat (EE/ME/AE/BE) boleh punya <b>indikator sendiri</b>. Yang tercetak adalah teks yang sesuai dengan predikat siswa. Predikat yang teksnya kosong memakai indikator umum.</li>
+    <li><span class="ui">Isi contoh indikator EE/ME/AE/BE</span> mengisi contoh teks bahasa Inggris, hanya untuk yang masih kosong.</li>
+  </ul>
+
+  <h2>Proyek (UOI) &amp; bank kalimat</h2>
+  <figure class="small"><img src="gambar/set-proyek.jpg" alt=""><figcaption>Tema, central idea, lines of inquiry, dan fasilitator</figcaption></figure>
+  <ul>
+    <li><b>Proyek</b>: isi tema, central idea, lines of inquiry (satu baris = satu poin), dan nama fasilitator untuk setiap proyek.</li>
+    <li><b>Bank kalimat narasi</b>: kalimat siap pakai per kelompok predikat. Tulisan <b>{name}</b> diganti nama siswa, <b>{he}</b>/<b>{their}</b> diganti he/she dan his/her, dan <b>{theme}</b> diganti tema proyek.</li>
+  </ul>
+
+  <h2>Wali kelas &amp; tanda tangan</h2>
+  <figure><img src="gambar/set-ttd.jpg" alt=""><figcaption><span class="num">1</span> pilih Tanda tangan digital</figcaption></figure>
+  <ol>
+    <li>Di <b>Wali kelas</b>, tulis nama wali kelas lengkap dengan gelar untuk setiap kelas.</li>
+    <li>Di <b>Tanda tangan</b>, pilih <b>Tanda tangan basah</b> (ditandatangani dengan pulpen setelah dicetak) atau <b>Tanda tangan digital</b> (gambarnya tercetak di setiap rapor).</li>
+    <li>Untuk tanda tangan digital, klik <span class="ui">Tambah tanda tangan…</span> pada kepala sekolah dan setiap wali kelas, lalu pilih salah satu cara:
+      <ul>
+        <li><b>Dari foto / gambar</b>: foto tanda tangan di kertas putih polos, dari atas dengan cahaya terang. Latar kertas dihapus otomatis. Bisa juga menempel screenshot dengan <kbd>Ctrl</kbd>+<kbd>V</kbd>.</li>
+        <li><b>Gambar langsung</b>: tanda tangan dengan mouse, touchpad, atau pen. Ada tombol <span class="ui">Urungkan</span>/<span class="ui">Ulangi</span> dan pilihan warna tinta.</li>
+      </ul></li>
+    <li>Klik <span class="ui">Simpan tanda tangan</span>, lalu <span class="ui">Simpan</span> di bilah bawah Pengaturan.</li>
+  </ol>
+  <figure class="small"><img src="gambar/ttd-gambar.jpg" alt=""><figcaption>Menggambar tanda tangan, dengan pratinjau di rapor</figcaption></figure>
+  <div class="note warn"><b>Simpan flashdisk di tempat aman</b>Gambar tanda tangan ikut tersimpan di data aplikasi dan di backup.</div>
+
+  <h2>Desain rapor</h2>
+  <p>Rapor memakai desain bawaan yang mengikuti template sekolah. Operator yang ingin mengubah tampilan rapor bisa klik <span class="ui">Salin desain bawaan ke folder data</span>, lalu mengedit file <b>template-rapor.html</b> di folder data. Aplikasi otomatis memakai file itu. Bagian ini tidak perlu diubah oleh guru.</p>
+</section>
+
+<!-- ================================================================== 5 -->
+<section class="chapter">
+  <h1 class="ch"><span class="n">5</span>Isi rapor per siswa</h1>
+  <span class="who">Wali kelas</span>
+  <p class="lead">Bagian ini paling sering dipakai: mengisi kehadiran, ATL &amp; Learner Profile, proyek, dan narasi untuk setiap siswa. <b>Tidak perlu menekan Simpan.</b></p>
+  <figure><img src="gambar/isi-awal.jpg" alt=""><figcaption><span class="num">1</span> pilih kelas · <span class="num">2</span> tab Per siswa · <span class="num">3</span> yang belum lengkap · <span class="num">4</span> Pratinjau</figcaption></figure>
+  <ol>
+    <li>Buka <span class="ui">Isi rapor</span>, pilih kelas di tab atas, dan pastikan tab <span class="ui">Per siswa</span> aktif.</li>
+    <li>Klik nama siswa di daftar kiri. Titik <b style="color:#1F8A57">hijau</b> berarti lengkap, titik <b style="color:#C98507">oranye</b> berarti ada catatan, dan titik abu-abu berarti belum diisi.</li>
+    <li>Kotak kuning di atas formulir menyebutkan apa saja yang <b>belum lengkap</b> untuk siswa itu.</li>
+  </ol>
+
+  <h2>Kehadiran</h2>
+  <figure class="small"><img src="gambar/isi-kehadiran.jpg" alt=""><figcaption><span class="num">1</span> jumlah hari S / I / A · <span class="num">2</span> ubah hari efektif</figcaption></figure>
+  <ul>
+    <li>Isi jumlah hari <b>Sakit (S)</b>, <b>Izin (I)</b>, dan <b>Alpa (A)</b>. <b>Kehadiran di rapor</b> dihitung otomatis, misalnya <b>97% (Present)</b>.</li>
+    <li>Rumusnya: (hari efektif − (S + I + A)) ÷ hari efektif × 100%. Klik <span class="ui">ubah hari efektif</span> untuk mengganti total hari efektif semester. Kehadiran semua siswa ikut dihitung ulang.</li>
+    <li>Teks kehadiran juga boleh diketik langsung.</li>
+  </ul>
+
+  <h2>Bagian 1 · ATL &amp; Learner Profile</h2>
+  <figure><img src="gambar/isi-atl.jpg" alt=""><figcaption><span class="num">1</span> klik predikat · <span class="num">2</span> atau ketik angka</figcaption></figure>
+  <ul>
+    <li>Untuk setiap atribut, klik <span class="code ee">EE</span> <span class="code me">ME</span> <span class="code ae">AE</span> <span class="code be">BE</span>, atau ketik angka 0–100 di kotak <b>angka</b>. Angkanya otomatis diubah menjadi predikat.</li>
+    <li>Teks indikator di sebelah kanan ikut berganti sesuai predikat.</li>
+    <li>Butuh teks khusus untuk satu siswa? Klik <span class="ui">Ubah untuk siswa ini</span>, lalu ketik teksnya. Untuk kembali, klik <span class="ui">Pakai indikator bawaan</span>.</li>
+  </ul>
+
+  <h2>Bagian 2 · Proyek (UOI) dan narasi</h2>
+  <figure><img src="gambar/isi-proyek.jpg" alt=""><figcaption><span class="num">1</span> Draf otomatis · <span class="num">2</span> Bank kalimat</figcaption></figure>
+  <ol>
+    <li>Klik <span class="ui">+ Tambah proyek</span> dan pilih proyeknya. Satu siswa boleh punya lebih dari satu proyek. <span class="ui">Hapus proyek</span> menghapusnya.</li>
+    <li>Isi <b>Understanding Level</b> dan <b>Inquiry &amp; Research Skills</b>.</li>
+    <li><b>Teacher Narrative Feedback</b> (bahasa Inggris, 2–4 kalimat):
+      <ul>
+        <li><span class="ui">Draf otomatis</span> menyusun draf sesuai predikat, lengkap dengan nama siswa dan he/she. Baca, lalu sesuaikan dengan pengamatan Anda.</li>
+        <li><span class="ui">Bank kalimat…</span> menampilkan kalimat siap pakai. Kalimat yang cocok dengan predikat siswa ada di paling atas. Klik <span class="ui">+ Tambah</span> untuk memasukkannya ke akhir narasi.</li>
+      </ul></li>
+  </ol>
+  <figure><img src="gambar/isi-bank.jpg" alt=""><figcaption>Bank kalimat untuk satu siswa</figcaption></figure>
+
+  <h2>Bagian 3 · Nilai mapel</h2>
+  <p>Nilai dan predikat mapel diambil otomatis dari halaman <span class="ui">Nilai mapel</span>, jadi wali kelas tidak perlu mengetik nilai. Indikator mapel boleh diubah khusus untuk satu siswa lewat <span class="ui">Ubah untuk siswa ini</span>.</p>
+
+  <h2>Pratinjau dan pindah siswa</h2>
+  <figure><img src="gambar/isi-pratinjau.jpg" alt=""><figcaption>Pratinjau rapor satu siswa, persis seperti saat dicetak</figcaption></figure>
+  <ul>
+    <li><span class="ui">Pratinjau</span> (kanan atas) menampilkan rapor siswa persis seperti saat dicetak. Dari jendela itu rapor juga bisa langsung dicetak.</li>
+    <li>Di bagian bawah: <span class="ui">Lanjut ke …</span> pindah ke siswa berikutnya, dan <span class="ui">Ke yang belum lengkap</span> langsung membuka siswa yang belum selesai. Tombol panah ↑/↓ di samping nama siswa juga bisa dipakai.</li>
+    <li>Di daftar siswa, pilih <span class="ui">Belum lengkap</span> untuk menampilkan siswa yang belum selesai saja. Kotak <b>Cari siswa</b> membantu mencari nama.</li>
+  </ul>
+  <figure class="small"><img src="gambar/isi-bawah.jpg" alt=""><figcaption><span class="num">1</span> ke yang belum lengkap · <span class="num">2</span> lanjut ke siswa berikutnya</figcaption></figure>
+</section>
+
+<!-- ================================================================== 6 -->
+<section class="chapter">
+  <h1 class="ch"><span class="n">6</span>Nilai proyek (fasilitator)</h1>
+  <span class="who">Fasilitator proyek</span>
+  <p class="lead">Fasilitator mengisi nilai satu proyek untuk satu kelas sekaligus, dalam satu tabel.</p>
+  <figure><img src="gambar/proyek-tabel.jpg" alt=""><figcaption><span class="num">1</span> pilih proyek · <span class="num">2</span> draf narasi yang kosong · <span class="num">3</span> impor dari Excel</figcaption></figure>
+  <ol>
+    <li>Buka <span class="ui">Isi rapor</span>, pilih kelas, lalu tab <span class="ui">Nilai proyek</span>, dan pilih <b>Proyek</b>.</li>
+    <li>Isi <b>Understanding Level</b> dan <b>Inquiry &amp; Research Skills</b>. Cukup ketik huruf awal: <span class="code ee">E → EE</span> <span class="code me">M → ME</span> <span class="code ae">A → AE</span> <span class="code be">B → BE</span>, atau angka 0–100. Tekan <kbd>Enter</kbd> atau <kbd>↓</kbd> untuk turun ke siswa berikutnya.</li>
+    <li>Siswa otomatis ikut proyek begitu nilainya diisi. Untuk memberi proyek ke semua siswa sekelas, pilih proyek di kanan atas (<b>Beri proyek ke semua siswa</b>), lalu klik <span class="ui">Terapkan</span>.</li>
+    <li>Centang <b>Hanya peserta proyek ini</b> untuk menyembunyikan siswa yang tidak ikut proyek.</li>
+    <li><span class="ui">Draf narasi kosong…</span> membuat draf narasi untuk semua siswa yang narasinya masih kosong. Narasi yang sudah ada tidak diubah.</li>
+  </ol>
+  <div class="note"><b>Tempel dari Excel</b>Blok kolom nilai di Excel (boleh beserta kolom nama di depannya), tekan <kbd>Ctrl</kbd>+<kbd>C</kbd>, klik sel pertama di tabel, lalu tekan <kbd>Ctrl</kbd>+<kbd>V</kbd>. Kalau kolom pertama berisi nama, baris dicocokkan lewat nama, jadi urutannya boleh berbeda.</div>
+
+  <h2>Impor nilai proyek dari Excel</h2>
+  <ol>
+    <li>Klik <span class="ui">Impor nilai proyek dari Excel…</span> dan pilih filenya.</li>
+    <li>Kolom (nama, kelas, Understanding, Inquiry, narasi) dan proyeknya ditebak dari nama sheet atau judul tabel. Ganti pilihannya kalau keliru. Predikat boleh ditulis EE/ME/AE/BE, E/M/A/B, atau angka.</li>
+    <li>Klik <span class="ui">Periksa</span>, baca ringkasannya (isian yang tertimpa dan siswa baru), lalu klik <span class="ui">Terapkan</span>.</li>
+  </ol>
+  <figure><img src="gambar/proyek-impor.jpg" alt=""><figcaption><span class="num">1</span> kolom yang ditebak · <span class="num">2</span> proyek tujuan</figcaption></figure>
+</section>
+
+<!-- ================================================================== 7 -->
+<section class="chapter">
+  <h1 class="ch"><span class="n">7</span>Template Excel, absensi &amp; form</h1>
+  <span class="who">Operator · guru mapel · wali kelas · fasilitator</span>
+  <p class="lead">Setiap guru biasanya membuat file Excel dengan caranya sendiri. Supaya semua data seragam, sekolah memakai <b>empat template Excel baku</b> yang sama untuk SD, SMP, dan SMA. Guru tinggal mengunduh template, mengisinya, lalu menyerahkannya ke operator. File langsung terbaca aplikasi tanpa perlu mengatur kolom.</p>
+
+  <h2>Empat template baku</h2>
+  <table class="t">
+    <tr><th style="width:24%">File</th><th>Kolom</th><th style="width:30%">Dimasukkan lewat</th></tr>
+    <tr><td><b>Template 1 - Data Siswa</b></td><td>No · Nama Siswa · NIS · NISN · Kelas · <b>L/P</b></td><td>Data siswa → Impor dari Excel</td></tr>
+    <tr><td><b>Template 2 - Nilai Mapel</b></td><td>Kotak kuning <b>Mata pelajaran</b>, lalu No · Nama Siswa · NIS · NISN · Kelas · <b>PH · PTS</b></td><td>Nilai mapel → Impor nilai dari Excel</td></tr>
+    <tr><td><b>Template 3 - Nilai Proyek</b></td><td>Kotak kuning <b>Proyek</b>, lalu No · Nama Siswa · NIS · NISN · Kelas · <b>Understanding Level · Inquiry &amp; Research Skills · Teacher Narrative Feedback</b></td><td>Isi rapor → Nilai proyek → Impor nilai proyek dari Excel</td></tr>
+    <tr><td><b>Template 4 - Absensi</b></td><td>No · Nama Siswa · NIS · NISN · Kelas · <b>Sakit · Izin · Alpa</b></td><td>Isi rapor → Impor absensi Excel</td></tr>
+  </table>
+  <div class="note ok"><b>Lima kolom pertama selalu sama</b>No, Nama Siswa, NIS, NISN, dan Kelas ada di semua template dengan urutan yang sama. Kalau NISN diisi, siswa pasti cocok; kalau tidak, siswa dicocokkan lewat nama dan kelas.</div>
+
+  <h2>Mendapatkan template</h2>
+  <ul>
+    <li><b>File siap bagi:</b> keempat template kosong ada di folder <b>template-excel</b> (bersama aplikasi). Bagikan lewat WhatsApp, flashdisk, atau Google Drive.</li>
+    <li><b>Dari aplikasi:</b> klik <span class="ui">Template Excel</span> di halaman <b>Data siswa</b>, <b>Nilai mapel</b>, atau tab <b>Nilai proyek</b>. Pilih jenisnya, lalu klik <span class="ui">Simpan template…</span>.</li>
+    <li>Dari aplikasi, centang <b>Cantumkan daftar siswa dari aplikasi</b> supaya nama, NIS, NISN, dan kelas sudah terisi. Guru tinggal mengisi nilai dan tidak ada salah ketik nama. Susunan kolomnya tetap sama dengan template kosong.</li>
+  </ul>
+  <figure class="small"><img src="gambar/tpl-tombol.jpg" alt=""><figcaption>Tombol Template Excel (contoh di halaman Nilai mapel)</figcaption></figure>
+  <figure><img src="gambar/tpl-nilai.jpg" alt=""><figcaption><span class="num">1</span> jenis template · <span class="num">2</span> cantumkan daftar siswa · <span class="num">3</span> Simpan template</figcaption></figure>
+
+  <h2>Cara mengisi (untuk guru)</h2>
+  <ol>
+    <li><b>Nilai mapel:</b> satu file untuk <b>satu mata pelajaran</b>. Tulis nama mapel di kotak kuning (baris 2), misalnya <i>IPA</i>, <i>Matematika</i>, atau <i>Bahasa Inggris</i>. Satu file boleh berisi beberapa kelas.</li>
+    <li><b>Nilai proyek:</b> satu file untuk <b>satu proyek</b>. Tulis nama atau tema proyek di kotak kuning, misalnya <i>Project 1</i> atau <i>Who We Are</i>.</li>
+    <li>Isi data mulai <b>baris 6</b>, satu baris untuk satu siswa. Baris 1–5 (judul) jangan diubah.</li>
+    <li>Kelas ditulis dengan pola yang sama, misalnya I-A, VII-1, X-B.</li>
+    <li>Nilai mapel: angka 0–100 (boleh desimal). Nilai proyek: EE/ME/AE/BE, huruf awalnya (E, M, A, B), atau angka. Absensi: jumlah hari (angka bulat).</li>
+    <li>Jangan menggabungkan sel dan jangan menyisipkan kolom baru. Nilai akhir, predikat, dan persentase kehadiran dihitung aplikasi, jadi tidak perlu rumus di Excel.</li>
+  </ol>
+  <figure class="small"><img src="gambar/tpl-siswa.jpg" alt=""><figcaption>Template 1 - Data Siswa</figcaption></figure>
+  <figure class="small"><img src="gambar/tpl-proyek.jpg" alt=""><figcaption>Template 3 - Nilai Proyek: nama proyek di kotak kuning</figcaption></figure>
+  <figure class="small"><img src="gambar/tpl-absensi.jpg" alt=""><figcaption>Template 4 - Absensi: jumlah hari sakit, izin, dan alpa</figcaption></figure>
+
+  <h2>Memasukkan template yang sudah diisi (untuk operator)</h2>
+  <p>Pakai tombol impor yang biasa. Aplikasi langsung mengenali kolomnya dan nama mapel atau proyek di kotak kuning. Nama mapel dalam bahasa Indonesia juga dikenali, misalnya "Matematika" untuk mapel Mathematics. Periksa pratinjaunya, klik <span class="ui">Periksa</span>, lalu <span class="ui">Terapkan</span>.</p>
+  <figure><img src="gambar/tpl-impor.jpg" alt=""><figcaption>Template nilai mapel yang diisi guru: kolom identitas langsung terbaca</figcaption></figure>
+  <p>Sel yang dibiarkan kosong <b>tidak menghapus</b> isian yang sudah ada di aplikasi.</p>
+  <div class="note"><b>Template atau form Excel?</b>Template dipakai untuk mengumpulkan <b>satu jenis</b> data (nilai mapel, nilai proyek, absensi, atau daftar siswa). <span class="ui">Buat form Excel</span> (di bawah) dipakai kalau wali kelas atau fasilitator ingin mengisi <b>semua isian rapor</b> (ATL, proyek, kehadiran) di Excel lalu mengirimkannya kembali.</div>
+
+  <h2>Tombol Excel di halaman Isi rapor</h2>
+  <p>Tiga tombol di kanan atas halaman Isi rapor: <span class="ui">Impor absensi Excel</span>, <span class="ui">Impor form</span>, dan <span class="ui">Buat form Excel</span>.</p>
+
+  <h2>Impor absensi Excel</h2>
+  <figure class="small"><img src="gambar/absensi-impor.jpg" alt=""><figcaption><span class="num">1</span> total hari efektif semester</figcaption></figure>
+  <ol>
+    <li>Klik <span class="ui">Impor absensi Excel</span> dan pilih rekap absensi yang punya kolom Nama serta Sakit/Izin/Alpa (atau S/I/A).</li>
+    <li>Periksa <b>total hari efektif</b>. Biarkan centang "sel kosong dianggap 0 hari" kalau sel kosong berarti hadir.</li>
+    <li>Centang kelasnya, lalu klik <span class="ui">Impor</span>. Persentase kehadiran semua siswa langsung dihitung.</li>
+  </ol>
+
+  <h2>Form Excel untuk guru yang tidak memakai aplikasi</h2>
+  <div class="two">
+    <div>
+      <ol>
+        <li>Klik <span class="ui">Buat form Excel</span>.</li>
+        <li>Pilih <b>kelas</b> dan <b>kolom yang diisi</b>: ATL, proyek (Understanding, Inquiry, narasi), atau kehadiran (S/I/A dengan rumus % otomatis).</li>
+        <li>Untuk proyek, pilih semua proyek atau satu proyek saja, dan centang "Hanya siswa yang sudah diberi proyek ini" kalau perlu.</li>
+        <li>Klik <span class="ui">Simpan form…</span>, lalu kirim file itu ke guru.</li>
+        <li>Guru mengisi <b>kolom putih</b> saja di Microsoft Excel. Kolom abu-abu (ID, kelas, nama) jangan diubah.</li>
+        <li>Setelah form dikirim kembali, klik <span class="ui">Impor form</span>. Aplikasi menunjukkan berapa isian yang berubah. Klik <span class="ui">Terapkan</span>.</li>
+      </ol>
+    </div>
+    <figure class="tall"><img src="gambar/form-buat.jpg" alt=""><figcaption>Pilihan kelas dan kolom</figcaption></figure>
+  </div>
+  <figure class="small"><img src="gambar/form-impor.jpg" alt=""><figcaption>Form yang kembali: periksa, lalu <span class="num">1</span> Terapkan</figcaption></figure>
+  <div class="note warn"><b>"Sertakan salinan data lengkap"</b>Jangan centang pilihan ini untuk guru biasa. Pilihan ini hanya untuk memindahkan seluruh data (nilai semua mapel, NIS/NISN) ke aplikasi E-Raport di laptop lain.</div>
+</section>
+
+<!-- ================================================================== 8 -->
+<section class="chapter">
+  <h1 class="ch"><span class="n">8</span>Cetak, PDF, dan leger</h1>
+  <span class="who">Operator · wali kelas</span>
+  <figure><img src="gambar/cetak.jpg" alt=""><figcaption><span class="num">1</span> pilih siswa · <span class="num">2</span> Cetak / Simpan PDF · <span class="num">3</span> PDF per siswa · <span class="num">4</span> Leger Excel</figcaption></figure>
+  <h2>Mencetak</h2>
+  <ol>
+    <li>Buka <span class="ui">Cetak</span> dan pilih kelas.</li>
+    <li>Centang siswa yang akan dicetak (<b>Pilih semua</b> untuk sekelas). Siswa yang masih punya <b style="color:#C98507">catatan</b> diberi tanda. Arahkan kursor ke tulisan "catatan" untuk melihat detailnya.</li>
+    <li>Periksa pratinjau di kanan.</li>
+    <li>Klik <span class="ui">Cetak / Simpan PDF</span>. Setiap siswa tercetak di lembar baru. Di jendela cetak, pilih printer atau <b>Simpan sebagai PDF</b>, ukuran kertas sesuai Pengaturan (mis. A4), dan skala 100%.</li>
+  </ol>
+  <figure class="small"><img src="gambar/cetak-ttd.jpg" alt=""><figcaption>Bagian bawah rapor: nilai mapel, keterangan predikat, dan tanda tangan</figcaption></figure>
+  <h2>PDF per siswa</h2>
+  <p>Klik <span class="ui">PDF per siswa…</span>, lalu pilih folder. Satu file PDF dibuat untuk setiap siswa yang dicentang, dengan nama siswa sebagai nama file. Cocok untuk dikirim ke orang tua atau diarsipkan. (Di Windows memakai Microsoft Edge yang sudah terpasang; di MacBook perlu Google Chrome.)</p>
+  <h2>Leger Excel</h2>
+  <figure class="small"><img src="gambar/leger.jpg" alt=""><figcaption>Pilih kelas lalu Simpan leger</figcaption></figure>
+  <p>Klik <span class="ui">Leger Excel…</span>, centang kelas, lalu <span class="ui">Simpan leger…</span>. File Excel berisi satu sheet per kelas (nilai, predikat, ATL, proyek, kehadiran, dan status rapor setiap siswa), ditambah sheet <b>Rekap</b> yang berisi sebaran predikat per mapel.</p>
+</section>
+
+<!-- ================================================================== 9 -->
+<section class="chapter">
+  <h1 class="ch"><span class="n">9</span>Data &amp; arsip (backup)</h1>
+  <span class="who">Operator</span>
+  <p class="lead">Data tersimpan di laptop. Kalau laptop rusak atau hilang, data ikut hilang, kecuali sudah di-backup ke flashdisk.</p>
+  <figure><img src="gambar/data-atas.jpg" alt=""><figcaption><span class="num">1</span> Backup ke flashdisk · <span class="num">2</span> Pasang kata sandi</figcaption></figure>
+  <h2>Backup ke flashdisk</h2>
+  <ol>
+    <li>Colokkan flashdisk, buka <span class="ui">Data &amp; arsip</span>, dan klik <span class="ui">Backup ke flashdisk…</span>.</li>
+    <li>Pilih flashdisk-nya, atau folder lain seperti Google Drive. Backup disimpan di folder <b>E-Raport backup</b>.</li>
+    <li>Statusnya berubah menjadi <b>Semua perubahan sudah di-backup</b>. Status ini juga terlihat di kiri bawah layar.</li>
+  </ol>
+  <div class="note ok"><b>Biasakan setiap selesai mengisi</b>Selain backup ke flashdisk, aplikasi juga menyimpan salinan harian otomatis di laptop selama 30 hari. <span class="ui">Buka folder data</span> menampilkan lokasi data di laptop.</div>
+
+  <h2>Pulihkan data</h2>
+  <div class="two">
+    <figure><img src="gambar/data-bawah.jpg" alt=""><figcaption><span class="num">1</span> Pulihkan · <span class="num">2</span> Semester baru</figcaption></figure>
+    <figure><img src="gambar/pulihkan.jpg" alt=""><figcaption>Perbandingan file backup dan data sekarang</figcaption></figure>
+  </div>
+  <ol>
+    <li>Klik <span class="ui">Pilih file backup…</span> dan pilih file dari flashdisk, backup harian, atau arsip.</li>
+    <li>Bandingkan isi file dengan data sekarang (jenjang, sekolah, jumlah siswa, tahun ajaran, waktu terakhir diubah).</li>
+    <li>Klik <span class="ui">Pulihkan</span>. Data sekarang disalin dulu ke folder backup, jadi langkah ini selalu bisa dibatalkan.</li>
+  </ol>
+
+  <h2>Semester atau tahun ajaran baru</h2>
+  <figure class="small"><img src="gambar/semester-baru.jpg" alt=""><figcaption>Arsipkan semester ini dan mulai yang baru</figcaption></figure>
+  <ul>
+    <li>Klik <span class="ui">Mulai semester baru…</span>. Data semester ini disimpan sebagai <b>arsip</b> dengan nama yang bisa diubah.</li>
+    <li><b>Ganti term</b>: daftar siswa tetap, sedangkan nilai dan isian dikosongkan. <b>Tahun ajaran baru</b>: daftar siswa juga dikosongkan, lalu impor ulang dari Dapodik.</li>
+    <li>Pengaturan (mapel, indikator, proyek, predikat, wali kelas) dibawa ke semester baru. Isi tahun ajaran dan sub-judul rapor yang baru, lalu centang konfirmasi bahwa rapor semester ini sudah dicetak.</li>
+    <li>Arsip lama tampil di bagian <b>Arsip</b> dan bisa dibuka lagi lewat Pulihkan data.</li>
+  </ul>
+
+  <h2>Jenjang SD · SMP · SMA</h2>
+  <figure class="small"><img src="gambar/jenjang-baru.jpg" alt=""><figcaption>Membuka jenjang baru untuk pertama kali</figcaption></figure>
+  <p>Saat pertama kali membuka jenjang lain, aplikasi bertanya apakah pengaturannya mau disalin dari jenjang yang sudah ada (predikat, mapel, indikator, ATL, proyek, bank kalimat, judul rapor, dan logo). Nama sekolah, kepala sekolah, tanda tangan, dan kelas tidak ikut disalin.</p>
+</section>
+
+<!-- ================================================================== 10 -->
+<section class="chapter">
+  <h1 class="ch"><span class="n">10</span>Kata sandi &amp; Google Authenticator</h1>
+  <span class="who">Operator · pemilik laptop</span>
+  <p class="lead">Kata sandi mencegah orang lain, misalnya siswa, membuka atau mengubah nilai lewat aplikasi di laptop ini.</p>
+  <h2>Memasang kata sandi</h2>
+  <ol>
+    <li>Di <span class="ui">Data &amp; arsip</span>, klik <span class="ui">Pasang kata sandi…</span>.</li>
+    <li>Ketik kata sandi baru dua kali (minimal 6 karakter), misalnya "rapor-kelas9-lab".</li>
+    <li>Aplikasi menampilkan <b>kode pemulihan</b>, yang hanya muncul sekali. <b>Foto kode itu dengan HP</b> atau tulis di kertas dan simpan di tempat aman. Jangan disimpan di laptop atau flashdisk backup, dan jangan dikirim ke grup WhatsApp.</li>
+    <li>Centang "Saya sudah mencatat kode ini", lalu klik <span class="ui">Selesai</span>.</li>
+  </ol>
+  <div class="two">
+    <figure class="small"><img src="gambar/sandi-kode.jpg" alt=""><figcaption>Kode pemulihan (contoh)</figcaption></figure>
+    <figure class="small"><img src="gambar/layar-kunci.jpg" alt=""><figcaption>Layar kunci. <span class="num">1</span> Lupa kata sandi?</figcaption></figure>
+  </div>
+  <h2>Mengunci aplikasi</h2>
+  <figure class="small"><img src="gambar/sandi-aktif.jpg" alt=""><figcaption><span class="num">1</span> kunci otomatis · <span class="num">2</span> hubungkan Google Authenticator</figcaption></figure>
+  <ul>
+    <li>Tekan <kbd>Ctrl</kbd>+<kbd>L</kbd> (MacBook: <kbd>⌘</kbd>+<kbd>L</kbd>) atau klik <span class="ui">Kunci aplikasi</span> di kiri bawah saat meninggalkan laptop.</li>
+    <li><b>Kunci otomatis</b>: aplikasi terkunci sendiri kalau tidak dipakai selama 5, 10, 15, 30 menit, atau 1 jam.</li>
+    <li><span class="ui">Ganti kata sandi…</span> dan <span class="ui">Matikan kata sandi…</span> ada di tempat yang sama.</li>
+  </ul>
+  <h2>Menghubungkan Google Authenticator</h2>
+  <ol>
+    <li>Pasang aplikasi <b>Google Authenticator</b> di HP (gratis, dari Play Store atau App Store).</li>
+    <li>Klik <span class="ui">Hubungkan Google Authenticator…</span>, ketik kata sandi sekarang, lalu klik <span class="ui">Lanjut</span>. Kode QR muncul.</li>
+    <li>Di Google Authenticator, ketuk <b>+</b> lalu <b>Pindai kode QR</b>, dan arahkan kamera ke kode di layar. Muncul <b>E-Raport</b> dengan 6 angka. Kalau kamera tidak bisa memindai, pilih "Masukkan kunci penyiapan" dan ketik kunci yang tertulis di bawah kode QR.</li>
+    <li>Ketik 6 angka itu, lalu klik <span class="ui">Hubungkan</span>.</li>
+  </ol>
+  <figure class="small"><img src="gambar/auth-qr.jpg" alt=""><figcaption>Kode QR (disamarkan di panduan ini)</figcaption></figure>
+  <h2>Lupa kata sandi</h2>
+  <div class="two">
+    <div>
+      <ol>
+        <li>Di layar kunci, klik <span class="ui">Lupa kata sandi?</span>.</li>
+        <li>Buka Google Authenticator di HP, lalu ketik 6 angka di bawah tulisan E-Raport. Angkanya berganti setiap 30 detik.</li>
+        <li>Ketik kata sandi baru dua kali, lalu klik <span class="ui">Atur kata sandi baru</span>.</li>
+        <li>HP tidak ada? Klik <span class="ui">HP tidak ada? Pakai kode pemulihan</span>, lalu ketik kode pemulihan 16 huruf/angka. Setelah dipakai, kode pemulihan lama tidak berlaku lagi dan kode baru diberikan.</li>
+      </ol>
+      <div class="note warn"><b>Jam HP harus tepat</b>Kalau kode dari HP ditolak, pastikan jam HP dan laptop diatur otomatis. Aplikasi akan memberi tahu kalau jamnya berbeda jauh.</div>
+    </div>
+    <figure class="tall"><img src="gambar/lupa-auth.jpg" alt=""><figcaption><span class="num">1</span> kode dari HP · <span class="num">2</span> pakai kode pemulihan</figcaption></figure>
+  </div>
+  <div class="note"><b>Perlu diketahui</b>Kata sandi mengunci aplikasi, tetapi file data dan backup di flashdisk tidak dienkripsi. Tetap simpan flashdisk backup di tempat aman.</div>
+</section>
+
+<!-- ================================================================== 11 -->
+<section class="chapter">
+  <h1 class="ch"><span class="n">11</span>Memakai di MacBook</h1>
+  <p class="lead">E-Raport juga tersedia untuk MacBook (Intel dan Apple Silicon M1/M2/M3, macOS 11 ke atas). Cara memakainya sama dengan di Windows, dengan beberapa perbedaan di bawah ini.</p>
+  <h2>Memasang pertama kali</h2>
+  <ol>
+    <li>Buka file <b>E-Raport.dmg</b>, lalu seret <b>E-Raport</b> ke folder <b>Applications</b>.</li>
+    <li>Saat pertama dibuka, macOS menolak karena aplikasi belum terdaftar di Apple. Buka <b>Pengaturan Sistem → Privasi &amp; Keamanan</b>, gulir ke bawah, lalu klik <b>Tetap Buka</b> (Open Anyway). Langkah ini cukup sekali.</li>
+    <li>Kalau macOS bertanya tentang akses ke folder <b>Dokumen</b>, klik <b>Izinkan</b>. Data disimpan di Dokumen → E-Raport.</li>
+  </ol>
+  <h2>Perbedaan di MacBook</h2>
+  <table class="t">
+    <tr><th style="width:38%">Windows</th><th>MacBook</th></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>L</kbd> mengunci</td><td><kbd>⌘</kbd>+<kbd>L</kbd> mengunci</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd></td><td><kbd>⌘</kbd>+<kbd>C</kbd> / <kbd>⌘</kbd>+<kbd>V</kbd></td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>Ctrl</kbd>+<kbd>−</kbd> ukuran tulisan</td><td><kbd>⌘</kbd>+<kbd>+</kbd> / <kbd>⌘</kbd>+<kbd>−</kbd></td></tr>
+    <tr><td>Cetak membuka jendela cetak</td><td>Rapor dibuka sebagai PDF di aplikasi <b>Preview</b>. Tekan <kbd>⌘</kbd>+<kbd>P</kbd> untuk mencetak, atau File → Simpan.</td></tr>
+    <tr><td>PDF per siswa memakai Microsoft Edge</td><td>Perlu <b>Google Chrome</b> (gratis). Tanpa Chrome, rapor dibuka di Safari untuk dicetak dari sana.</td></tr>
+  </table>
+  <p>Data dan file backup bisa dipindah antara Windows dan MacBook karena formatnya sama. Gunakan <span class="ui">Backup ke flashdisk</span> di satu laptop dan <span class="ui">Pulihkan data</span> di laptop lain.</p>
+</section>
+
+<!-- ================================================================== 12 -->
+<section class="chapter">
+  <h1 class="ch"><span class="n">12</span>Tanya jawab &amp; masalah umum</h1>
+  <h3>Saya sudah mengisi, apakah perlu menekan Simpan?</h3>
+  <p>Tidak. Data siswa, nilai, dan isian rapor tersimpan otomatis. Hanya <span class="ui">Pengaturan</span> yang perlu tombol <span class="ui">Simpan</span>.</p>
+  <h3>Data siswa atau kelas tidak muncul.</h3>
+  <p>Periksa <b>jenjang</b> di kiri atas (SD/SMP/SMA), karena data setiap jenjang terpisah. Kalau kelas masuk ke jenjang yang salah, pakai <span class="ui">Data siswa → Kelola kelas → Pindahkan ke jenjang lain</span>.</p>
+  <h3>Saat impor nilai ada nama yang "tidak dimasukkan".</h3>
+  <p>Nama di file berbeda terlalu jauh dengan nama di Data siswa, atau siswanya belum ada. Samakan namanya (atau tambahkan siswanya) di Data siswa, lalu impor ulang. Nilai yang sudah masuk tidak hilang.</p>
+  <h3>File Excel dari guru tidak terbaca atau kolomnya keliru.</h3>
+  <p>Saat impor, pilih <span class="ui">Atur kolom sendiri</span> untuk menentukan kolomnya. Untuk pengisian berikutnya, bagikan <span class="ui">Template Excel</span> (bagian 7) supaya susunannya langsung cocok.</p>
+  <h3>Ada nilai akhir di bawah 80.</h3>
+  <p>Untuk sementara nilai itu dicetak BE dan muncul di <b>Ringkasan → Perlu dicek</b>. Periksa nilainya di Nilai mapel. Kolom Akhir boleh diisi manual kalau ada keputusan sekolah.</p>
+  <h3>Rapor masih punya "catatan" di halaman Cetak.</h3>
+  <p>Arahkan kursor ke tulisan "catatan" untuk melihat apa yang belum lengkap, misalnya ATL belum diisi, proyek belum ada, atau kehadiran kosong. Lengkapi di <span class="ui">Isi rapor</span>. Rapor tetap bisa dicetak.</p>
+  <h3>Tulisan di layar terlalu kecil atau terlalu besar.</h3>
+  <p>Tekan <kbd>Ctrl</kbd>+<kbd>+</kbd> untuk memperbesar, <kbd>Ctrl</kbd>+<kbd>−</kbd> untuk memperkecil, dan <kbd>Ctrl</kbd>+<kbd>0</kbd> untuk kembali normal.</p>
+  <h3>Data terhapus atau salah isi.</h3>
+  <p>Buka <span class="ui">Data &amp; arsip → Pilih file backup…</span>, lalu pilih backup flashdisk atau backup harian dari hari sebelumnya. Data sekarang disalin dulu, jadi langkah ini bisa dibatalkan.</p>
+  <h3>Lupa kata sandi dan HP juga tidak ada.</h3>
+  <p>Pakai <b>kode pemulihan</b> yang difoto atau dicatat saat kata sandi dipasang. Kalau kode itu juga hilang, aplikasi tidak bisa dibuka, jadi simpan kode pemulihan baik-baik.</p>
+  <h3>Rapor tercetak terpotong atau ukurannya salah.</h3>
+  <p>Di jendela cetak, pilih ukuran kertas yang sama dengan Pengaturan (A4/F4/Letter) dan skala 100% (bukan "Fit"). Margin biarkan bawaan.</p>
+
+  <h2>Tombol pintas</h2>
+  <table class="t">
+    <tr><th>Tombol</th><th>Fungsi</th></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>Mengunci aplikasi (kalau kata sandi dipasang)</td></tr>
+    <tr><td><kbd>Enter</kbd> / <kbd>↓</kbd> / <kbd>↑</kbd></td><td>Pindah baris di lembar kelas, tabel nilai, dan tabel nilai proyek</td></tr>
+    <tr><td><kbd>E</kbd> <kbd>M</kbd> <kbd>A</kbd> <kbd>B</kbd></td><td>Mengisi EE / ME / AE / BE di tabel nilai proyek</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>V</kbd></td><td>Menempel sel dari Excel ke lembar kelas atau tabel nilai proyek; menempel screenshot tanda tangan</td></tr>
+    <tr><td><kbd>+</kbd> / <kbd>−</kbd></td><td>Menambah atau mengurangi satu hari di kolom S/I/A lembar kelas</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>+</kbd> · <kbd>Ctrl</kbd>+<kbd>−</kbd> · <kbd>Ctrl</kbd>+<kbd>0</kbd></td><td>Memperbesar, memperkecil, dan mengembalikan ukuran tulisan</td></tr>
+  </table>
+  <div class="note"><b>Butuh bantuan?</b>Catat langkah yang dilakukan dan pesan yang muncul (atau foto layarnya dengan HP), lalu sampaikan ke operator. Jangan menghapus data siswa untuk "memulai ulang".</div>
+</section>
+
+</body>
+</html>

@@ -187,6 +187,32 @@ fn subject_in_text(data: &AppData, texts: &[String]) -> Option<String> {
     })
 }
 
+/// Nama mapel yang setara (Indonesia / singkatan / Inggris), untuk mencocokkan nama mapel
+/// yang ditulis guru di template dengan nama/sumber nilai di Pengaturan.
+const SUBJECT_ALIASES: &[&[&str]] = &[
+    &["MATEMATIKA", "MAT", "MTK", "MATHEMATICS", "MATH", "MATHS"],
+    &["IPA", "SCIENCE", "ILMU PENGETAHUAN ALAM", "SAINS"],
+    &["IPS", "SOCIAL STUDIES", "ILMU PENGETAHUAN SOSIAL"],
+    &["BAHASA INDONESIA", "B INDO", "B INDONESIA", "BINDO", "INDONESIAN", "BAHASA INDO"],
+    &["BAHASA INGGRIS", "B ING", "B INGGRIS", "BING", "ENGLISH"],
+    &["BAHASA BALI", "B BALI", "BBALI"],
+    &["PJOK", "PENJAS", "PENJASKES", "PENJASORKES", "PHYSICAL EDUCATION"],
+    &["PENDIDIKAN PANCASILA", "PANCASILA", "PKN", "PPKN"],
+    &["AGAMA", "PENDIDIKAN AGAMA"],
+    &["SENI BUDAYA", "SENI", "SBDP", "ART", "ARTS"],
+    &["INFORMATIKA", "TIK", "ICT", "COMPUTER SCIENCE"],
+];
+
+/// Nama mapel yang diketik guru (mis. "Matematika") → kunci mapel di Pengaturan (mis. "MAT").
+fn subject_by_alias(data: &AppData, typed: &str) -> Option<String> {
+    let t = format!(" {} ", normalize_name(typed));
+    let group = SUBJECT_ALIASES.iter().find(|g| g.iter().any(|a| t.contains(&format!(" {a} "))))?;
+    data.settings.subjects.iter().find_map(|s| {
+        let names = [format!(" {} ", normalize_name(&s.source_key)), format!(" {} ", normalize_name(&s.name))];
+        group.iter().any(|a| names.iter().any(|n| n.contains(&format!(" {a} ")))).then(|| s.source_key.clone())
+    })
+}
+
 /// Judul dari file → kunci mapel di Pengaturan kalau setara ("B.Indo" = "B. INDO"), selain itu apa adanya.
 fn subject_key(data: &AppData, label: &str) -> String {
     let k = canonical_key(label);
@@ -244,7 +270,16 @@ pub fn guess_mapping(data: &AppData, grid: &Grid, sheet: &str, file_stem: &str) 
     // teks di luar tabel untuk menebak mapel & kelas
     let mut around: Vec<String> = vec![sheet.to_string(), file_stem.to_string()];
     around.extend((0..hr).flat_map(|r| grid[r].iter().map(cell_text)).filter(|t| !t.is_empty()));
-    let sheet_subject = subject_in_text(data, &around).or_else(|| {
+    // isian "Mata pelajaran: …" di atas tabel (template baku): dipakai apa adanya kalau tidak ada di Pengaturan
+    let typed_subject = (0..hr).find_map(|r| {
+        let row = &grid[r];
+        let at = (0..row.len()).find(|&c| matches!(header(&row[c]).as_str(), "MATA PELAJARAN" | "MAPEL" | "MATA PELAJARAN MAPEL" | "SUBJECT"))?;
+        (at + 1..row.len()).map(|c| cell_text(&row[c])).find(|t| !t.is_empty())
+    });
+    let sheet_subject = subject_in_text(data, &around)
+        .or_else(|| typed_subject.as_deref().and_then(|t| subject_by_alias(data, t)))
+        .or(typed_subject)
+        .or_else(|| {
         let generic = normalize_name(sheet);
         let looks_generic = generic.starts_with("SHEET") || generic.starts_with("LEMBAR") || generic.contains("NILAI") || generic.contains("REKAP");
         (!looks_generic && canonical_class(sheet).is_none() && sheet.chars().count() <= 24).then(|| sheet.trim().to_string())

@@ -34,8 +34,9 @@ export async function importWizard(kind, onDone, app = null) {
     return;
   }
   const sheets = scans.filter((s) => s.kind === kind);
-  // Data siswa bukan ekspor Dapodik (daftar nilai guru SD, daftar kelas SMA, dll.): susunan kolom ditebak.
-  if (kind === 'students' && !sheets.length) {
+  // Data siswa bukan ekspor Dapodik (daftar nilai guru SD, daftar kelas SMA, dll.), atau daftar
+  // tanpa judul kelas (mis. satu sheet per kelas): susunan kolom & kelas ditebak (kelas dari nama sheet/judul).
+  if (kind === 'students' && (!sheets.length || sheets.every((s) => !s.classes.some((c) => c.name)))) {
     flexibleStudents(modal, path, scans, onDone, null, app);
     return;
   }

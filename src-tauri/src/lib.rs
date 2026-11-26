@@ -20,6 +20,7 @@ pub mod security;
 pub mod student_flex;
 pub mod totp;
 pub mod store;
+pub mod templates;
 pub mod view;
 
 use std::path::PathBuf;
@@ -95,6 +96,7 @@ pub fn run() {
             commands::inspect_score_sheet,
             commands::import_scores_mapped,
             commands::save_student_list,
+            commands::save_template,
             commands::pick_folder,
             commands::export_pdfs,
             commands::pick_image_file,
